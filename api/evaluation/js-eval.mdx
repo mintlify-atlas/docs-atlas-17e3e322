@@ -1,0 +1,239 @@
+---
+title: JS_Eval
+description: Evaluate JavaScript code from strings
+---
+
+# JS_Eval - Code Evaluation
+
+The `JS_Eval()` function evaluates JavaScript source code from a string.
+
+## JS_Eval
+
+Evaluate JavaScript code.
+
+```c
+JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
+               const char *filename, int eval_flags);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `input` - The source code string (must be zero-terminated: `input[input_len] = '\0'`)
+- `input_len` - Length of the source code
+- `filename` - Filename for error messages and stack traces (can be any descriptive string)
+- `eval_flags` - Evaluation flags
+
+### Returns
+
+Returns the result of evaluation, or `JS_EXCEPTION` on error.
+
+### Evaluation Flags
+
+```c
+/* JS_Eval() flags */
+#define JS_EVAL_TYPE_GLOBAL   (0 << 0) /* global code (default) */
+#define JS_EVAL_TYPE_MODULE   (1 << 0) /* module code */
+#define JS_EVAL_TYPE_DIRECT   (2 << 0) /* direct call (internal use) */
+#define JS_EVAL_TYPE_INDIRECT (3 << 0) /* indirect call (internal use) */
+#define JS_EVAL_TYPE_MASK     (3 << 0)
+
+#define JS_EVAL_FLAG_STRICT   (1 << 3) /* force 'strict' mode */
+#define JS_EVAL_FLAG_COMPILE_ONLY (1 << 5) /* compile but do not run */
+#define JS_EVAL_FLAG_BACKTRACE_BARRIER (1 << 6) /* don't include previous frames */
+#define JS_EVAL_FLAG_ASYNC (1 << 7) /* allow top-level await (returns promise) */
+```
+
+### Example: Basic Evaluation
+
+```c
+const char *code = "2 + 2";
+JSValue result = JS_Eval(ctx, code, strlen(code), "<eval>", JS_EVAL_TYPE_GLOBAL);
+
+if (JS_IsException(result)) {
+    js_std_dump_error(ctx);
+} else {
+    int32_t value;
+    JS_ToInt32(ctx, &value, result);
+    printf("Result: %d\n", value);  // prints: Result: 4
+}
+
+JS_FreeValue(ctx, result);
+```
+
+### Example: Module Evaluation
+
+```c
+const char *module_code = 
+    "import { PI } from 'math';\n"
+    "export const area = (r) => PI * r * r;";
+
+JSValue result = JS_Eval(ctx, module_code, strlen(module_code),
+                         "circle.js", JS_EVAL_TYPE_MODULE);
+
+if (JS_IsException(result)) {
+    js_std_dump_error(ctx);
+}
+
+JS_FreeValue(ctx, result);
+```
+
+### Example: Strict Mode
+
+```c
+const char *code = "x = 10;";
+JSValue result = JS_Eval(ctx, code, strlen(code), "<eval>",
+                         JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_STRICT);
+
+// This will throw a ReferenceError in strict mode
+if (JS_IsException(result)) {
+    js_std_dump_error(ctx);  // ReferenceError: x is not defined
+}
+
+JS_FreeValue(ctx, result);
+```
+
+### Example: Compile Only
+
+```c
+const char *code = "function greet() { return 'Hello'; }";
+JSValue bytecode = JS_Eval(ctx, code, strlen(code), "greet.js",
+                           JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+
+if (!JS_IsException(bytecode)) {
+    // bytecode has JS_TAG_FUNCTION_BYTECODE tag
+    // Execute it later with JS_EvalFunction()
+    JSValue result = JS_EvalFunction(ctx, bytecode);
+    JS_FreeValue(ctx, result);
+}
+```
+
+## JS_Eval2
+
+Evaluate JavaScript code with extended options.
+
+```c
+JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len,
+                JSEvalOptions *options);
+```
+
+### JSEvalOptions Structure
+
+```c
+#define JS_EVAL_OPTIONS_VERSION 1
+
+typedef struct JSEvalOptions {
+    int version;          // must be JS_EVAL_OPTIONS_VERSION
+    int eval_flags;
+    const char *filename;
+    int line_num;
+} JSEvalOptions;
+```
+
+### Example
+
+```c
+JSEvalOptions options = {
+    .version = JS_EVAL_OPTIONS_VERSION,
+    .eval_flags = JS_EVAL_TYPE_GLOBAL,
+    .filename = "user-script.js",
+    .line_num = 1
+};
+
+const char *code = "console.log('Hello');";
+JSValue result = JS_Eval2(ctx, code, strlen(code), &options);
+JS_FreeValue(ctx, result);
+```
+
+## JS_EvalThis
+
+Evaluate code with a specific `this` binding.
+
+```c
+JSValue JS_EvalThis(JSContext *ctx, JSValueConst this_obj,
+                   const char *input, size_t input_len,
+                   const char *filename, int eval_flags);
+```
+
+### Example
+
+```c
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, "QuickJS"));
+
+const char *code = "this.name";
+JSValue result = JS_EvalThis(ctx, obj, code, strlen(code),
+                             "<eval>", JS_EVAL_TYPE_GLOBAL);
+
+const char *name = JS_ToCString(ctx, result);
+printf("%s\n", name);  // prints: QuickJS
+JS_FreeCString(ctx, name);
+
+JS_FreeValue(ctx, result);
+JS_FreeValue(ctx, obj);
+```
+
+## JS_EvalFunction
+
+Execute compiled bytecode.
+
+```c
+JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `fun_obj` - Bytecode object from `JS_Eval()` with `JS_EVAL_FLAG_COMPILE_ONLY`
+
+### Returns
+
+Returns the result of execution.
+
+### Example
+
+```c
+const char *code = "21 * 2";
+JSValue bytecode = JS_Eval(ctx, code, strlen(code), "calc.js",
+                           JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+
+if (!JS_IsException(bytecode)) {
+    JSValue result = JS_EvalFunction(ctx, bytecode);
+    int32_t value;
+    JS_ToInt32(ctx, &value, result);
+    printf("%d\n", value);  // prints: 42
+    JS_FreeValue(ctx, result);
+}
+```
+
+## Module Detection
+
+### JS_DetectModule
+
+Detect if input is a module.
+
+```c
+bool JS_DetectModule(const char *input, size_t input_len);
+```
+
+Returns `true` if parsing the input as a module produces no syntax errors.
+
+**Note:** This is a naive approach - non-strict classic scripts may parse as a module but have different runtime semantics.
+
+### Example
+
+```c
+const char *code = "import foo from 'bar'; export default 123;";
+if (JS_DetectModule(code, strlen(code))) {
+    printf("This looks like a module\n");
+}
+```
+
+## Notes
+
+- The `input` string must be zero-terminated: `input[input_len] = '\0'`
+- Input can be pure ASCII or UTF-8 encoded
+- Always check for `JS_EXCEPTION` before using the result
+- Use `js_std_dump_error()` from quickjs-libc to print exceptions
+- `JS_EVAL_FLAG_COMPILE_ONLY` is useful for ahead-of-time compilation
+- `JS_EVAL_FLAG_ASYNC` with `JS_EVAL_TYPE_GLOBAL` allows top-level await and returns a promise

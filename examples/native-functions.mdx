@@ -1,0 +1,169 @@
+---
+title: Native C Functions
+description: Expose C functions to JavaScript in QuickJS
+---
+
+# Exposing C Functions to JavaScript
+
+This tutorial shows how to create native C modules that can be called from JavaScript code.
+
+## Simple Function Example
+
+We'll create a Fibonacci function in C and expose it to JavaScript.
+
+<Steps>
+
+<Step title="Create the C module">
+
+Create `fib.c` with the native implementation:
+
+```c
+#include <quickjs.h>
+
+#define countof(x) (sizeof(x) / sizeof((x)[0]))
+
+/* Native C implementation of Fibonacci */
+static int fib(int n)
+{
+    if (n <= 0)
+        return 0;
+    else if (n == 1)
+        return 1;
+    else
+        return fib(n - 1) + fib(n - 2);
+}
+
+/* JavaScript wrapper function */
+static JSValue js_fib(JSContext *ctx, JSValue this_val,
+                      int argc, JSValue *argv)
+{
+    int n, res;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    res = fib(n);
+    return JS_NewInt32(ctx, res);
+}
+
+/* Export list */
+static const JSCFunctionListEntry js_fib_funcs[] = {
+    JS_CFUNC_DEF("fib", 1, js_fib ),
+};
+
+/* Module initialization */
+static int js_fib_init(JSContext *ctx, JSModuleDef *m)
+{
+    return JS_SetModuleExportList(ctx, m, js_fib_funcs,
+                                  countof(js_fib_funcs));
+}
+
+/* Module entry point */
+JS_MODULE_EXTERN JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
+{
+    JSModuleDef *m;
+    m = JS_NewCModule(ctx, module_name, js_fib_init);
+    if (!m)
+        return NULL;
+    JS_AddModuleExportList(ctx, m, js_fib_funcs, countof(js_fib_funcs));
+    return m;
+}
+```
+
+**Key components:**
+
+1. **Native implementation** - The `fib()` function in pure C
+2. **JavaScript wrapper** - `js_fib()` handles type conversion between JS and C
+3. **Export list** - Declares which functions to expose
+4. **Module initialization** - Sets up the module exports
+5. **Entry point** - `js_init_module()` is called when the module is loaded
+
+</Step>
+
+<Step title="Compile the native module">
+
+Compile the C code into a shared library:
+
+**On Linux/macOS:**
+```bash
+cc -fPIC -shared -o fib.so fib.c -I. -L. -lquickjs
+```
+
+**On Windows:**
+```bash
+cc -shared -o fib.dll fib.c -I. -L. -lquickjs
+```
+
+</Step>
+
+<Step title="Create a test JavaScript file">
+
+Create `test_fib.js` to test the native module:
+
+```javascript
+/* example of JS module importing a C module */
+import * as os from "qjs:os";
+
+const isWin = os.platform === 'win32';
+const { fib } = await import(`./fib.${isWin ? 'dll' : 'so'}`);
+
+console.log("Hello World");
+console.log("fib(10)=", fib(10));
+```
+
+This code:
+- Detects the platform to load the correct library extension
+- Dynamically imports the native module
+- Calls the native `fib()` function
+
+</Step>
+
+<Step title="Run the example">
+
+Execute the test file:
+
+```bash
+qjs --std test_fib.js
+```
+
+**Expected output:**
+
+```
+Hello World
+fib(10)= 55
+```
+
+The `--std` flag enables the standard library, which includes the `qjs:os` module.
+
+</Step>
+
+</Steps>
+
+## Creating a Native Class
+
+For more complex scenarios, you can expose entire classes. See the [Point class example](https://github.com/quickjs-ng/quickjs/blob/master/examples/point.c) which demonstrates:
+
+- Creating a JavaScript class backed by C data structures
+- Implementing getters and setters
+- Adding methods to the prototype
+- Proper memory management with finalizers
+- Class inheritance support
+
+## Type Conversion Functions
+
+**JavaScript to C:**
+- `JS_ToInt32(ctx, &n, val)` - Convert to 32-bit integer
+- `JS_ToFloat64(ctx, &d, val)` - Convert to double
+- `JS_ToCString(ctx, val)` - Convert to C string
+- `JS_ToBool(ctx, val)` - Convert to boolean
+
+**C to JavaScript:**
+- `JS_NewInt32(ctx, n)` - Create integer value
+- `JS_NewFloat64(ctx, d)` - Create number value
+- `JS_NewString(ctx, str)` - Create string value
+- `JS_NewBool(ctx, b)` - Create boolean value
+- `JS_UNDEFINED`, `JS_NULL` - Special values
+
+## Next Steps
+
+- Learn about [JavaScript modules](./modules)
+- Explore [bytecode compilation](./bytecode-compilation)
+- See the complete [Point class example](https://github.com/quickjs-ng/quickjs/blob/master/examples/point.c)

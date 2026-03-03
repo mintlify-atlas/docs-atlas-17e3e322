@@ -1,0 +1,452 @@
+---
+title: qjsc - QuickJS Compiler
+description: Command-line reference for the qjsc JavaScript compiler that generates bytecode and C code
+---
+
+# qjsc - QuickJS Compiler
+
+The `qjsc` executable is the QuickJS JavaScript compiler. It compiles JavaScript source files into bytecode or C code that can be embedded in executables.
+
+## Basic Usage
+
+```bash
+qjsc [options] [files]
+```
+
+## Output Modes
+
+`qjsc` can generate output in three different formats:
+
+<Tabs>
+  <Tab title="C Code (Default)">
+    Generate C code with embedded bytecode:
+    
+    ```bash
+    qjsc -o output.c script.js
+    ```
+    
+    This creates a C file containing bytecode as a byte array that can be compiled into your application.
+  </Tab>
+  
+  <Tab title="Standalone Executable">
+    Generate a complete C program with `main()` function:
+    
+    ```bash
+    qjsc -e -o app.c script.js
+    ```
+    
+    Then compile it:
+    
+    ```bash
+    cc app.c -lquickjs -o app
+    ./app
+    ```
+  </Tab>
+  
+  <Tab title="Raw Bytecode">
+    Generate raw bytecode without C wrapper:
+    
+    ```bash
+    qjsc -b -o script.bin script.js
+    ```
+    
+    Useful for loading pre-compiled bytecode at runtime.
+  </Tab>
+</Tabs>
+
+## Command-Line Options
+
+### Output Control
+
+<ParamField path="-o OUTPUT" type="string">
+  Set the output filename (default: `out.c`)
+  
+  ```bash
+  qjsc -o compiled.c script.js
+  ```
+</ParamField>
+
+<ParamField path="-b" type="flag">
+  Output raw bytecode instead of C code
+  
+  ```bash
+  qjsc -b -o script.bin script.js
+  ```
+</ParamField>
+
+<ParamField path="-e" type="flag">
+  Output a complete C file with `main()` function and bytecode
+  
+  ```bash
+  qjsc -e -o app.c app.js
+  ```
+  
+  The generated C file can be compiled directly into a standalone executable.
+</ParamField>
+
+### Code Generation
+
+<ParamField path="-N CNAME" type="string">
+  Set the C name of the generated data array
+  
+  ```bash
+  qjsc -N my_script_data -o output.c script.js
+  ```
+  
+  By default, the C name is derived from the filename.
+</ParamField>
+
+<ParamField path="-p PREFIX" type="string">
+  Set the prefix for generated C names (default: `qjsc_`)
+  
+  ```bash
+  qjsc -p myapp_ -o output.c script.js
+  ```
+</ParamField>
+
+<ParamField path="-n SCRIPT_NAME" type="string">
+  Set the script name as used in stack traces
+  
+  ```bash
+  qjsc -n "MyApp v1.0" -o output.c script.js
+  ```
+</ParamField>
+
+### Module Handling
+
+<ParamField path="-m" type="flag">
+  Compile as ES6 module (default=autodetect)
+  
+  ```bash
+  qjsc -m -o module.c app.js
+  ```
+</ParamField>
+
+<ParamField path="-C" type="flag">
+  Compile as classic JavaScript script (default=autodetect)
+  
+  ```bash
+  qjsc -C -o script.c legacy.js
+  ```
+</ParamField>
+
+<Note>
+  By default, `qjsc` automatically detects whether a file is a module based on:
+  - File extension (`.mjs` files are modules)
+  - Content analysis (presence of `import`/`export` statements)
+</Note>
+
+<ParamField path="-D MODULE_NAME" type="string">
+  Compile a dynamically loaded module or worker
+  
+  ```bash
+  qjsc -D worker.js -o output.c main.js
+  ```
+</ParamField>
+
+<ParamField path="-M MODULE_NAME[,CNAME]" type="string">
+  Add initialization code for an external C module
+  
+  ```bash
+  # Use default C name
+  qjsc -M mymodule -e -o app.c script.js
+  
+  # Specify custom C name
+  qjsc -M mymodule,my_mod -e -o app.c script.js
+  ```
+  
+  This adds initialization code for C modules that will be linked with the executable.
+</ParamField>
+
+<ParamField path="-P" type="flag">
+  Do not add default system modules (`std`, `os`, `bjson`)
+  
+  ```bash
+  qjsc -P -e -o minimal.c script.js
+  ```
+  
+  Useful for creating minimal executables without standard library dependencies.
+</ParamField>
+
+### Optimization
+
+<ParamField path="-s" type="flag">
+  Strip source code from the bytecode. Specify twice (`-ss`) to also strip debug info.
+  
+  ```bash
+  # Strip source code only
+  qjsc -s -o output.c script.js
+  
+  # Strip source code and debug info
+  qjsc -ss -o output.c script.js
+  ```
+  
+  Stripping reduces bytecode size but makes debugging harder.
+</ParamField>
+
+<Warning>
+  Stripping debug info will make stack traces less useful. Only use `-ss` for production builds where size is critical.
+</Warning>
+
+### Runtime Configuration
+
+<ParamField path="-S N" type="string">
+  Set the maximum stack size to N bytes (default: 262144)
+  
+  ```bash
+  # Set stack size to 512KB
+  qjsc -S 524288 -e -o app.c script.js
+  
+  # Using suffixes: k, m, g
+  qjsc -S 512k -e -o app.c script.js
+  ```
+</ParamField>
+
+### Help
+
+<ParamField path="-h, --help" type="flag">
+  Display help information and exit
+</ParamField>
+
+## Examples
+
+### Compile a Simple Script to C
+
+```bash
+qjsc -o hello.c examples/hello.js
+```
+
+The generated `hello.c` contains:
+
+```c
+#include <inttypes.h>
+
+const uint32_t qjsc_hello_size = 123;
+
+const uint8_t qjsc_hello[123] = {
+  0x02, 0x04, 0x0e, 0x63, 0x6f, 0x6e, 0x73, 0x6f,
+  // ... bytecode ...
+};
+```
+
+### Create a Standalone Executable
+
+<CodeGroup>
+```bash Step 1: Compile to C
+qjsc -e -o app.c app.js
+```
+
+```bash Step 2: Compile C to Binary
+cc app.c -lquickjs -o app
+```
+
+```bash Step 3: Run
+./app
+```
+</CodeGroup>
+
+### Compile Multiple Files
+
+```bash
+qjsc -e -o app.c main.js utils.js helpers.js
+```
+
+All files will be compiled and embedded in the generated C code.
+
+### Compile with External C Module
+
+Given a C module `fib.c` with an `js_init_module_fib` function:
+
+```bash
+# Compile JavaScript that uses the C module
+qjsc -M fib -e -o app.c main.js
+
+# Compile everything together
+cc app.c fib.c -lquickjs -o app
+```
+
+In `main.js`:
+
+```javascript
+import { fib } from 'fib';
+console.log('fib(10) =', fib(10));
+```
+
+### Minimal Executable (No Standard Library)
+
+```bash
+# Compile without std, os, bjson modules
+qjsc -P -e -o minimal.c simple.js
+
+cc minimal.c -lquickjs -o minimal
+```
+
+This creates a smaller executable that doesn't include the standard library.
+
+### Generate Optimized Bytecode
+
+```bash
+# Strip source code and debug info for smallest size
+qjsc -ss -b -o optimized.bin script.js
+```
+
+## Compiling Modules
+
+### ES6 Module
+
+```javascript
+// module.js
+export function greet(name) {
+  return `Hello, ${name}!`;
+}
+
+export const version = '1.0.0';
+```
+
+```bash
+qjsc -m -o module.c module.js
+```
+
+### Classic Script
+
+```javascript
+// script.js
+function greet(name) {
+  console.log('Hello, ' + name);
+}
+
+greet('World');
+```
+
+```bash
+qjsc -C -o script.c script.js
+```
+
+## Integration with Build Systems
+
+### Using with Make
+
+```makefile
+app: app.c
+	cc app.c -lquickjs -o app
+
+app.c: src/main.js
+	qjsc -e -o app.c src/main.js
+
+clean:
+	rm -f app app.c
+```
+
+### Using with CMake
+
+```cmake
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/app.c
+  COMMAND qjsc -e -o ${CMAKE_CURRENT_BINARY_DIR}/app.c ${CMAKE_CURRENT_SOURCE_DIR}/main.js
+  DEPENDS main.js
+)
+
+add_executable(app ${CMAKE_CURRENT_BINARY_DIR}/app.c)
+target_link_libraries(app quickjs)
+```
+
+## Generated C Code Structure
+
+### With `-e` flag (Standalone)
+
+The generated C file includes:
+
+```c
+#include "quickjs-libc.h"
+
+// Bytecode data
+const uint32_t qjsc_script_size = ...;
+const uint8_t qjsc_script[...] = { ... };
+
+// Context initialization
+static JSContext *JS_NewCustomContext(JSRuntime *rt) {
+  // Initialize context and modules
+}
+
+// Main function
+int main(int argc, char **argv) {
+  // Runtime setup
+  // Execute bytecode
+  // Cleanup
+}
+```
+
+### Without `-e` flag (Library)
+
+The generated C file includes only:
+
+```c
+#include <inttypes.h>
+
+const uint32_t qjsc_script_size = ...;
+const uint8_t qjsc_script[...] = { ... };
+```
+
+You can load this bytecode in your own application using `JS_ReadObject()`.
+
+## Compiling Full C Applications
+
+When using `qjsc -e`, you need to link against QuickJS and its dependencies:
+
+```bash
+# Full compilation command
+cc app.c \
+  -I/path/to/quickjs \
+  -L/path/to/quickjs \
+  -lquickjs \
+  -lm \
+  -lpthread \
+  -ldl \
+  -o app
+```
+
+<Note>
+  The exact linker flags may vary depending on your system and QuickJS build configuration.
+</Note>
+
+## Common Use Cases
+
+### Embedding in Applications
+
+Generate C code without `main()` to embed in your own application:
+
+```bash
+qjsc -o embedded.c script.js
+```
+
+Then in your C code:
+
+```c
+extern const uint8_t qjsc_script[];
+extern const uint32_t qjsc_script_size;
+
+JSValue obj = JS_ReadObject(ctx, qjsc_script, qjsc_script_size, 
+                             JS_READ_OBJ_BYTECODE);
+```
+
+### Pre-compiling for Faster Startup
+
+Compile to bytecode and load at runtime:
+
+```bash
+# Compile to bytecode
+qjsc -b -o script.bin script.js
+```
+
+Load in your application:
+
+```c
+// Read bytecode file and load
+uint8_t *buf = read_file("script.bin", &size);
+JSValue obj = JS_ReadObject(ctx, buf, size, JS_READ_OBJ_BYTECODE);
+```
+
+## See Also
+
+- [qjs](./qjs) - QuickJS interpreter for running JavaScript
+- [Creating Standalone Executables](./standalone-executables) - Alternative method using qjs

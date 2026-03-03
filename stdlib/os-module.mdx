@@ -1,0 +1,989 @@
+---
+title: qjs:os Module
+description: Operating system functions for file access, processes, signals, timers, and workers
+---
+
+The `qjs:os` module provides low-level operating system functionality including file I/O, process management, signals, timers, and worker threads.
+
+```javascript
+import * as os from 'qjs:os';
+```
+
+<Note>
+Most OS functions return `0` on success or a negative error code (`-errno`) on failure.
+</Note>
+
+## File Operations
+
+### `open(filename, flags, mode)`
+
+Opens a file and returns a file descriptor.
+
+<ParamField path="filename" type="string" required>
+  Path to the file
+</ParamField>
+
+<ParamField path="flags" type="number" required>
+  Bitwise OR of open flags (see below)
+</ParamField>
+
+<ParamField path="mode" type="number" default="0o666">
+  File permissions (used when creating files)
+</ParamField>
+
+<ResponseField name="return" type="number">
+  File descriptor (non-negative) or negative error code
+</ResponseField>
+
+```javascript
+import * as os from 'qjs:os';
+import * as std from 'qjs:std';
+
+const fd = os.open('data.txt', os.O_RDWR | os.O_CREAT, 0o644);
+if (fd < 0) {
+  console.log('Error:', std.strerror(-fd));
+} else {
+  // Use file descriptor
+  os.close(fd);
+}
+```
+
+#### Open Flags
+
+- `os.O_RDONLY` - Read-only
+- `os.O_WRONLY` - Write-only
+- `os.O_RDWR` - Read and write
+- `os.O_APPEND` - Append mode
+- `os.O_CREAT` - Create file if it doesn't exist
+- `os.O_EXCL` - Fail if file exists (used with O_CREAT)
+- `os.O_TRUNC` - Truncate file to zero length
+- `os.O_TEXT` - Text mode (Windows only)
+
+### `close(fd)`
+
+Closes a file descriptor.
+
+<ParamField path="fd" type="number" required>
+  File descriptor to close
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+```javascript
+os.close(fd);
+```
+
+### `seek(fd, offset, whence)`
+
+Seeks to a position in the file.
+
+<ParamField path="fd" type="number" required>
+  File descriptor
+</ParamField>
+
+<ParamField path="offset" type="number | BigInt" required>
+  Byte offset. Use BigInt for large files.
+</ParamField>
+
+<ParamField path="whence" type="number" required>
+  Reference point: `std.SEEK_SET`, `std.SEEK_CUR`, or `std.SEEK_END`
+</ParamField>
+
+<ResponseField name="return" type="number | BigInt">
+  New file position, or negative error code. Returns BigInt if offset was BigInt.
+</ResponseField>
+
+```javascript
+import * as std from 'qjs:std';
+
+// Seek to end of file
+const size = os.seek(fd, 0, std.SEEK_END);
+
+// Seek to beginning
+os.seek(fd, 0, std.SEEK_SET);
+```
+
+### `read(fd, buffer, offset, length)`
+
+Reads data from a file descriptor into an ArrayBuffer.
+
+<ParamField path="fd" type="number" required>
+  File descriptor
+</ParamField>
+
+<ParamField path="buffer" type="ArrayBuffer" required>
+  Destination buffer
+</ParamField>
+
+<ParamField path="offset" type="number" required>
+  Byte offset in buffer to start writing
+</ParamField>
+
+<ParamField path="length" type="number" required>
+  Number of bytes to read
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Number of bytes read, or negative error code
+</ResponseField>
+
+```javascript
+const buffer = new ArrayBuffer(1024);
+const bytesRead = os.read(fd, buffer, 0, 1024);
+if (bytesRead < 0) {
+  console.log('Read error');
+}
+```
+
+### `write(fd, buffer, offset, length)`
+
+Writes data from an ArrayBuffer to a file descriptor.
+
+<ParamField path="fd" type="number" required>
+  File descriptor
+</ParamField>
+
+<ParamField path="buffer" type="ArrayBuffer" required>
+  Source buffer
+</ParamField>
+
+<ParamField path="offset" type="number" required>
+  Byte offset in buffer to start reading
+</ParamField>
+
+<ParamField path="length" type="number" required>
+  Number of bytes to write
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Number of bytes written, or negative error code
+</ResponseField>
+
+```javascript
+const buffer = new Uint8Array([72, 101, 108, 108, 111]).buffer;
+const bytesWritten = os.write(fd, buffer, 0, 5);
+```
+
+## File System Operations
+
+### `remove(filename)`
+
+Deletes a file.
+
+<ParamField path="filename" type="string" required>
+  Path to file to remove
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+```javascript
+const ret = os.remove('temp.txt');
+if (ret !== 0) {
+  console.log('Failed to remove file');
+}
+```
+
+### `rename(oldname, newname)`
+
+Renames or moves a file.
+
+<ParamField path="oldname" type="string" required>
+  Current path
+</ParamField>
+
+<ParamField path="newname" type="string" required>
+  New path
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+```javascript
+os.rename('old.txt', 'new.txt');
+```
+
+### `realpath(path)`
+
+Resolves the canonical absolute pathname.
+
+<ParamField path="path" type="string" required>
+  Path to resolve
+</ParamField>
+
+<ResponseField name="return" type="[string, number]">
+  Array containing `[absolutePath, errorCode]`. Check if `errorCode` is 0.
+</ResponseField>
+
+```javascript
+const [absPath, err] = os.realpath('../file.txt');
+if (err === 0) {
+  console.log('Absolute path:', absPath);
+}
+```
+
+### `getcwd()`
+
+Returns the current working directory.
+
+<ResponseField name="return" type="[string, number]">
+  Array containing `[path, errorCode]`
+</ResponseField>
+
+```javascript
+const [cwd, err] = os.getcwd();
+if (err === 0) {
+  console.log('Current directory:', cwd);
+}
+```
+
+### `exePath()`
+
+Returns the full path of the current executable.
+
+<ResponseField name="return" type="string | undefined">
+  Executable path or undefined if not available/supported
+</ResponseField>
+
+```javascript
+const exe = os.exePath();
+console.log('Running from:', exe);
+```
+
+### `chdir(path)`
+
+Changes the current working directory.
+
+<ParamField path="path" type="string" required>
+  New directory path
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+```javascript
+os.chdir('/tmp');
+```
+
+### `mkdir(path, mode)`
+
+Creates a directory.
+
+<ParamField path="path" type="string" required>
+  Directory path to create
+</ParamField>
+
+<ParamField path="mode" type="number" default="0o777">
+  Directory permissions
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+```javascript
+os.mkdir('new_dir', 0o755);
+```
+
+### `mkdtemp(pattern)`
+
+Creates a temporary directory with a unique name.
+
+<ParamField path="pattern" type="string" default="tmpXXXXXX">
+  Pattern where XXXXXX is replaced with random characters. Must end with XXXXXX.
+</ParamField>
+
+<ResponseField name="return" type="[string, number]">
+  Array containing `[path, errorCode]`. Directory is created with mode 0o700.
+</ResponseField>
+
+```javascript
+const [tmpDir, err] = os.mkdtemp('myapp-XXXXXX');
+if (err === 0) {
+  console.log('Created temp dir:', tmpDir);
+}
+```
+
+<Warning>
+Not available on Windows and WASI.
+</Warning>
+
+### `mkstemp(pattern)`
+
+Creates a temporary file with a unique name and opens it.
+
+<ParamField path="pattern" type="string" default="tmpXXXXXX">
+  Pattern where XXXXXX is replaced with random characters. Must end with XXXXXX.
+</ParamField>
+
+<ResponseField name="return" type="[string, number]">
+  Array containing `[path, fd]` where `fd` is the file descriptor or negative error code.
+</ResponseField>
+
+```javascript
+const [tmpFile, fd] = os.mkstemp('data-XXXXXX');
+if (fd >= 0) {
+  // Use file descriptor
+  const f = std.fdopen(fd, 'w+');
+  f.puts('temp data');
+  f.close();
+  
+  // File is NOT automatically deleted (unlike std.tmpfile)
+  os.remove(tmpFile);
+}
+```
+
+<Warning>
+Not available on Windows and WASI. Unlike `std.tmpfile()`, the file is not automatically deleted.
+</Warning>
+
+### `stat(path)` / `lstat(path)`
+
+Returns file status information.
+
+<ParamField path="path" type="string" required>
+  File path
+</ParamField>
+
+<ResponseField name="return" type="[object, number]">
+  Array containing `[statObject, errorCode]`. The stat object contains:
+  - `dev` - Device ID
+  - `ino` - Inode number
+  - `mode` - File mode/permissions
+  - `nlink` - Number of hard links
+  - `uid` - User ID
+  - `gid` - Group ID
+  - `rdev` - Device ID (if special file)
+  - `size` - File size in bytes
+  - `blocks` - Number of blocks allocated
+  - `atime` - Last access time (milliseconds since epoch)
+  - `mtime` - Last modification time (milliseconds since epoch)
+  - `ctime` - Last status change time (milliseconds since epoch)
+</ResponseField>
+
+```javascript
+const [st, err] = os.stat('file.txt');
+if (err === 0) {
+  console.log('Size:', st.size);
+  console.log('Modified:', new Date(st.mtime));
+  
+  // Check if regular file
+  if ((st.mode & os.S_IFMT) === os.S_IFREG) {
+    console.log('Regular file');
+  }
+}
+```
+
+<Note>
+`lstat()` returns information about the link itself for symbolic links, while `stat()` follows the link.
+</Note>
+
+#### File Mode Constants
+
+- `os.S_IFMT` - File type mask
+- `os.S_IFIFO` - FIFO (named pipe)
+- `os.S_IFCHR` - Character device
+- `os.S_IFDIR` - Directory
+- `os.S_IFBLK` - Block device
+- `os.S_IFREG` - Regular file
+- `os.S_IFSOCK` - Socket
+- `os.S_IFLNK` - Symbolic link
+- `os.S_ISGID` - Set-group-ID bit
+- `os.S_ISUID` - Set-user-ID bit
+
+### `utimes(path, atime, mtime)`
+
+Changes file access and modification times.
+
+<ParamField path="path" type="string" required>
+  File path
+</ParamField>
+
+<ParamField path="atime" type="number" required>
+  Access time in milliseconds since epoch
+</ParamField>
+
+<ParamField path="mtime" type="number" required>
+  Modification time in milliseconds since epoch
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+```javascript
+const now = Date.now();
+os.utimes('file.txt', now, now);
+```
+
+### `symlink(target, linkpath)`
+
+Creates a symbolic link.
+
+<ParamField path="target" type="string" required>
+  Target path (what the link points to)
+</ParamField>
+
+<ParamField path="linkpath" type="string" required>
+  Path of the symbolic link to create
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+```javascript
+os.symlink('/usr/bin/node', '/usr/local/bin/node');
+```
+
+### `readlink(path)`
+
+Reads the target of a symbolic link.
+
+<ParamField path="path" type="string" required>
+  Path to symbolic link
+</ParamField>
+
+<ResponseField name="return" type="[string, number]">
+  Array containing `[target, errorCode]`
+</ResponseField>
+
+```javascript
+const [target, err] = os.readlink('/usr/bin/node');
+if (err === 0) {
+  console.log('Link points to:', target);
+}
+```
+
+### `readdir(path)`
+
+Reads directory contents.
+
+<ParamField path="path" type="string" required>
+  Directory path
+</ParamField>
+
+<ResponseField name="return" type="[string[], number]">
+  Array containing `[entries, errorCode]`. Entries include "." and ".." if successful.
+</ResponseField>
+
+```javascript
+const [files, err] = os.readdir('.');
+if (err === 0) {
+  for (const file of files) {
+    if (file !== '.' && file !== '..') {
+      console.log(file);
+    }
+  }
+}
+```
+
+## TTY Functions
+
+### `isatty(fd)`
+
+Checks if a file descriptor is a terminal.
+
+<ParamField path="fd" type="number" required>
+  File descriptor
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if fd is a TTY
+</ResponseField>
+
+```javascript
+if (os.isatty(0)) {
+  console.log('stdin is a terminal');
+}
+```
+
+### `ttyGetWinSize(fd)`
+
+Returns the terminal window size.
+
+<ParamField path="fd" type="number" required>
+  TTY file descriptor
+</ParamField>
+
+<ResponseField name="return" type="[number, number] | null">
+  Array `[width, height]` or null if not available
+</ResponseField>
+
+```javascript
+const size = os.ttyGetWinSize(1);
+if (size) {
+  console.log(`Terminal size: ${size[0]}x${size[1]}`);
+}
+```
+
+### `ttySetRaw(fd)`
+
+Sets the terminal to raw mode (no line buffering, no echo).
+
+<ParamField path="fd" type="number" required>
+  TTY file descriptor
+</ParamField>
+
+```javascript
+os.ttySetRaw(0); // Set stdin to raw mode
+```
+
+## Process Management
+
+### `exec(args, options)`
+
+Executes a new process.
+
+<ParamField path="args" type="string[]" required>
+  Command and arguments. First element is the command.
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration
+  
+  <ParamField path="block" type="boolean" default={true}>
+    If true, waits for process to complete and returns exit code. If false, returns process ID.
+  </ParamField>
+  
+  <ParamField path="usePath" type="boolean" default={true}>
+    If true, searches for executable in PATH
+  </ParamField>
+  
+  <ParamField path="file" type="string">
+    Executable path (defaults to args[0])
+  </ParamField>
+  
+  <ParamField path="cwd" type="string">
+    Working directory for the process
+  </ParamField>
+  
+  <ParamField path="stdin" type="number">
+    File descriptor to use for stdin
+  </ParamField>
+  
+  <ParamField path="stdout" type="number">
+    File descriptor to use for stdout
+  </ParamField>
+  
+  <ParamField path="stderr" type="number">
+    File descriptor to use for stderr
+  </ParamField>
+  
+  <ParamField path="env" type="object">
+    Environment variables as key-value pairs
+  </ParamField>
+  
+  <ParamField path="uid" type="number">
+    Set process UID (Unix only)
+  </ParamField>
+  
+  <ParamField path="gid" type="number">
+    Set process GID (Unix only)
+  </ParamField>
+  
+  <ParamField path="groups" type="number[]">
+    Supplementary group IDs (Unix only)
+  </ParamField>
+</ParamField>
+
+<ResponseField name="return" type="number">
+  If blocking: exit code (positive) or negated signal number (negative). If non-blocking: process ID.
+</ResponseField>
+
+```javascript
+// Blocking execution
+const exitCode = os.exec(['ls', '-l']);
+console.log('Exit code:', exitCode);
+
+// Non-blocking
+const pid = os.exec(['sleep', '10'], { block: false });
+console.log('Started process:', pid);
+
+// Capture output
+const [readFd, writeFd] = os.pipe();
+os.exec(['echo', 'hello'], { block: true, stdout: writeFd });
+os.close(writeFd);
+
+const buffer = new ArrayBuffer(100);
+const n = os.read(readFd, buffer, 0, 100);
+os.close(readFd);
+```
+
+### `waitpid(pid, options)`
+
+Waits for a child process to change state (Unix system call).
+
+<ParamField path="pid" type="number" required>
+  Process ID to wait for
+</ParamField>
+
+<ParamField path="options" type="number" required>
+  Wait options (e.g., `os.WNOHANG`)
+</ParamField>
+
+<ResponseField name="return" type="[number, number]">
+  Array containing `[ret, status]`. `ret` contains `-errno` on error.
+</ResponseField>
+
+- `os.WNOHANG` - Return immediately if no child has exited
+
+### `dup(fd)`
+
+Duplicates a file descriptor.
+
+<ParamField path="fd" type="number" required>
+  File descriptor to duplicate
+</ParamField>
+
+<ResponseField name="return" type="number">
+  New file descriptor or negative error code
+</ResponseField>
+
+### `dup2(oldfd, newfd)`
+
+Duplicates a file descriptor to a specific descriptor number.
+
+<ParamField path="oldfd" type="number" required>
+  Source file descriptor
+</ParamField>
+
+<ParamField path="newfd" type="number" required>
+  Target file descriptor number
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns newfd on success or negative error code
+</ResponseField>
+
+### `pipe()`
+
+Creates a pipe for inter-process communication.
+
+<ResponseField name="return" type="[number, number] | null">
+  Array `[readFd, writeFd]` or null on error
+</ResponseField>
+
+```javascript
+const [readFd, writeFd] = os.pipe();
+os.write(writeFd, new Uint8Array([1, 2, 3]).buffer, 0, 3);
+
+const buffer = new ArrayBuffer(10);
+os.read(readFd, buffer, 0, 10);
+
+os.close(readFd);
+os.close(writeFd);
+```
+
+## Signals
+
+### `signal(signal, func)`
+
+Registers a signal handler.
+
+<ParamField path="signal" type="number" required>
+  Signal number (e.g., `os.SIGINT`)
+</ParamField>
+
+<ParamField path="func" type="function | null | undefined">
+  Handler function, `null` for default handler, or `undefined` to ignore signal
+</ParamField>
+
+```javascript
+import * as os from 'qjs:os';
+
+os.signal(os.SIGINT, () => {
+  console.log('Caught SIGINT');
+  std.exit(0);
+});
+```
+
+<Warning>
+Signal handlers can only be defined in the main thread, not in workers.
+</Warning>
+
+#### Signal Constants
+
+- `os.SIGINT` - Interrupt (Ctrl+C)
+- `os.SIGABRT` - Abort
+- `os.SIGFPE` - Floating point exception
+- `os.SIGILL` - Illegal instruction
+- `os.SIGSEGV` - Segmentation fault
+- `os.SIGTERM` - Termination request
+
+### `kill(pid, sig)`
+
+Sends a signal to a process.
+
+<ParamField path="pid" type="number" required>
+  Process ID
+</ParamField>
+
+<ParamField path="sig" type="number" required>
+  Signal number
+</ParamField>
+
+```javascript
+os.kill(pid, os.SIGTERM);
+```
+
+## Asynchronous I/O
+
+### `setReadHandler(fd, func)`
+
+Registers a callback for when data is available to read.
+
+<ParamField path="fd" type="number" required>
+  File descriptor
+</ParamField>
+
+<ParamField path="func" type="function | null">
+  Callback function, or null to remove handler
+</ParamField>
+
+```javascript
+os.setReadHandler(fd, () => {
+  const buffer = new ArrayBuffer(1024);
+  const n = os.read(fd, buffer, 0, 1024);
+  console.log('Read', n, 'bytes');
+});
+```
+
+<Note>
+Only one read handler per file descriptor is supported.
+</Note>
+
+### `setWriteHandler(fd, func)`
+
+Registers a callback for when the file descriptor is ready for writing.
+
+<ParamField path="fd" type="number" required>
+  File descriptor
+</ParamField>
+
+<ParamField path="func" type="function | null">
+  Callback function, or null to remove handler
+</ParamField>
+
+```javascript
+os.setWriteHandler(fd, () => {
+  const data = new Uint8Array([1, 2, 3]);
+  os.write(fd, data.buffer, 0, 3);
+  os.setWriteHandler(fd, null); // Remove handler
+});
+```
+
+## Timers
+
+### `sleep(delay_ms)`
+
+Blocks for the specified duration (synchronous).
+
+<ParamField path="delay_ms" type="number" required>
+  Delay in milliseconds
+</ParamField>
+
+```javascript
+os.sleep(1000); // Sleep for 1 second
+```
+
+### `sleepAsync(delay_ms)`
+
+Asynchronously sleeps for the specified duration.
+
+<ParamField path="delay_ms" type="number" required>
+  Delay in milliseconds
+</ParamField>
+
+<ResponseField name="return" type="Promise<void>">
+  Promise that resolves after the delay
+</ResponseField>
+
+```javascript
+await os.sleepAsync(500);
+console.log('500ms elapsed');
+```
+
+### `setTimeout(func, delay)`
+
+Calls a function after a delay.
+
+<ParamField path="func" type="function" required>
+  Function to call
+</ParamField>
+
+<ParamField path="delay" type="number" required>
+  Delay in milliseconds
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Timer ID for use with clearTimeout
+</ResponseField>
+
+```javascript
+const timerId = os.setTimeout(() => {
+  console.log('Timer fired');
+}, 1000);
+```
+
+### `clearTimeout(id)`
+
+Cancels a timer.
+
+<ParamField path="id" type="number" required>
+  Timer ID returned by setTimeout
+</ParamField>
+
+```javascript
+const timerId = os.setTimeout(() => console.log('Never called'), 1000);
+os.clearTimeout(timerId);
+```
+
+## Platform Information
+
+### `os.platform`
+
+<ResponseField name="platform" type="string">
+  Platform identifier: `"linux"`, `"darwin"`, `"win32"`, or `"js"`
+</ResponseField>
+
+```javascript
+if (os.platform === 'win32') {
+  console.log('Running on Windows');
+}
+```
+
+## Workers (Threads)
+
+### `Worker(module_filename)`
+
+Creates a new worker thread with an API similar to Web Workers.
+
+<ParamField path="module_filename" type="string" required>
+  Path to the module to execute in the worker thread (relative to current script)
+</ParamField>
+
+```javascript
+// main.js
+import * as os from 'qjs:os';
+
+const worker = new os.Worker('worker.js');
+
+worker.onmessage = (msg) => {
+  console.log('Received from worker:', msg.data);
+};
+
+worker.postMessage({ command: 'start' });
+```
+
+```javascript
+// worker.js
+import * as os from 'qjs:os';
+
+os.Worker.parent.onmessage = (msg) => {
+  console.log('Worker received:', msg.data);
+  os.Worker.parent.postMessage({ result: 'done' });
+};
+```
+
+<Warning>
+Workers are not supported on WASI. Nested workers are not supported.
+</Warning>
+
+### Worker Static Properties
+
+<ParamField path="Worker.parent" type="Worker">
+  In a worker thread, represents the parent worker. Used to communicate with the parent.
+</ParamField>
+
+### Worker Instance Methods
+
+#### `postMessage(msg)`
+
+Sends a message to the worker.
+
+<ParamField path="msg" type="any" required>
+  Message to send. The message is cloned using structured clone algorithm. `SharedArrayBuffer` instances are shared.
+</ParamField>
+
+```javascript
+worker.postMessage({ type: 'task', data: [1, 2, 3] });
+
+// Sharing data with SharedArrayBuffer
+const shared = new SharedArrayBuffer(1024);
+worker.postMessage({ buffer: shared });
+```
+
+### Worker Instance Properties
+
+#### `onmessage`
+
+Getter and setter for the message handler function.
+
+<ParamField path="onmessage" type="function | null">
+  Function called when a message is received. Receives an event object with a `data` property.
+</ParamField>
+
+```javascript
+worker.onmessage = (event) => {
+  console.log('Message:', event.data);
+};
+```
+
+<Note>
+A worker thread is kept alive as long as there is at least one non-null `onmessage` handler.
+</Note>
+
+## Example: Parallel Processing
+
+```javascript
+// main.js
+import * as os from 'qjs:os';
+import * as std from 'qjs:std';
+
+const numWorkers = 4;
+const workers = [];
+let completedCount = 0;
+
+for (let i = 0; i < numWorkers; i++) {
+  const worker = new os.Worker('compute.js');
+  
+  worker.onmessage = (msg) => {
+    console.log(`Worker ${i} result:`, msg.data);
+    completedCount++;
+    
+    if (completedCount === numWorkers) {
+      console.log('All workers completed');
+      std.exit(0);
+    }
+  };
+  
+  worker.postMessage({ workerId: i, task: 'compute' });
+  workers.push(worker);
+}
+```
+
+```javascript
+// compute.js
+import * as os from 'qjs:os';
+
+os.Worker.parent.onmessage = (msg) => {
+  const { workerId, task } = msg.data;
+  
+  // Perform computation
+  let result = 0;
+  for (let i = 0; i < 1000000; i++) {
+    result += Math.sqrt(i);
+  }
+  
+  os.Worker.parent.postMessage({
+    workerId,
+    result
+  });
+};
+```

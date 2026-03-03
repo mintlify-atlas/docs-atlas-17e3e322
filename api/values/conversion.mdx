@@ -1,0 +1,469 @@
+---
+title: Value Conversion
+description: Functions for converting between JavaScript values and C types
+---
+
+# Value Conversion
+
+These functions convert JavaScript values to C types and vice versa. Most conversion functions can throw JavaScript exceptions, which must be checked by the caller.
+
+## To C Types
+
+### JS_ToBool
+
+Converts a JavaScript value to a C boolean.
+
+```c
+JS_EXTERN int JS_ToBool(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Value to convert
+
+**Returns:**
+- `1` for truthy values
+- `0` for falsy values
+- `-1` for `JS_EXCEPTION`
+
+**Example:**
+```c
+int result = JS_ToBool(ctx, val);
+if (result < 0)
+    return JS_EXCEPTION;  // Exception occurred
+if (result) {
+    // Value is truthy
+}
+```
+
+### JS_ToBoolean
+
+Converts a JavaScript value to a JavaScript boolean.
+
+```c
+static inline JSValue JS_ToBoolean(JSContext *ctx, JSValueConst val)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Value to convert
+
+**Returns:** A new JavaScript boolean value
+
+### JS_ToInt32
+
+Converts a JavaScript value to a 32-bit signed integer.
+
+```c
+JS_EXTERN int JS_ToInt32(JSContext *ctx, int32_t *pres, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `pres` - Pointer to store the result
+- `val` - Value to convert
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+**Example:**
+```c
+static JSValue js_fib(JSContext *ctx, JSValue this_val,
+                      int argc, JSValue *argv)
+{
+    int n, res;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    res = fib(n);
+    return JS_NewInt32(ctx, res);
+}
+```
+
+### JS_ToUint32
+
+Converts a JavaScript value to a 32-bit unsigned integer.
+
+```c
+static inline int JS_ToUint32(JSContext *ctx, uint32_t *pres, JSValueConst val)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `pres` - Pointer to store the result
+- `val` - Value to convert
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_ToInt64
+
+Converts a JavaScript value to a 64-bit signed integer.
+
+```c
+JS_EXTERN int JS_ToInt64(JSContext *ctx, int64_t *pres, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `pres` - Pointer to store the result
+- `val` - Value to convert
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_ToInt64Ext
+
+Converts a JavaScript value (including BigInt) to a 64-bit signed integer.
+
+```c
+JS_EXTERN int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `pres` - Pointer to store the result
+- `val` - Value to convert (Number or BigInt)
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+**Note:** Unlike `JS_ToInt64()`, this function also accepts BigInt values.
+
+### JS_ToIndex
+
+Converts a JavaScript value to a valid array index (0 to 2^53-1).
+
+```c
+JS_EXTERN int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `plen` - Pointer to store the result
+- `val` - Value to convert
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_ToFloat64
+
+Converts a JavaScript value to a double-precision floating point number.
+
+```c
+JS_EXTERN int JS_ToFloat64(JSContext *ctx, double *pres, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `pres` - Pointer to store the result
+- `val` - Value to convert
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+**Example:**
+```c
+double x;
+if (JS_ToFloat64(ctx, &x, argv[0]))
+    return JS_EXCEPTION;
+// Use x...
+```
+
+### JS_ToBigInt64
+
+Converts a JavaScript BigInt to a 64-bit signed integer.
+
+```c
+JS_EXTERN int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `pres` - Pointer to store the result
+- `val` - BigInt value to convert
+
+**Returns:**
+- `0` on success
+- `-1` on exception (including if `val` is a Number)
+
+**Note:** Returns an exception if `val` is a Number instead of a BigInt.
+
+### JS_ToBigUint64
+
+Converts a JavaScript BigInt to a 64-bit unsigned integer.
+
+```c
+JS_EXTERN int JS_ToBigUint64(JSContext *ctx, uint64_t *pres, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `pres` - Pointer to store the result
+- `val` - BigInt value to convert
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+## To String
+
+### JS_ToString
+
+Converts a JavaScript value to a JavaScript string.
+
+```c
+JS_EXTERN JSValue JS_ToString(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Value to convert
+
+**Returns:** A new JavaScript string, or `JS_EXCEPTION` on error
+
+### JS_ToCString
+
+Converts a JavaScript value to a null-terminated C string.
+
+```c
+static inline const char *JS_ToCString(JSContext *ctx, JSValueConst val1)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val1` - Value to convert
+
+**Returns:** A null-terminated UTF-8 string, or `NULL` on error
+
+**Example:**
+```c
+const char *str = JS_ToCString(ctx, val);
+if (!str)
+    return JS_EXCEPTION;
+printf("Value: %s\n", str);
+JS_FreeCString(ctx, str);
+```
+
+**Note:** The returned string must be freed with `JS_FreeCString()` when no longer needed.
+
+### JS_ToCStringLen
+
+Converts a JavaScript value to a C string with length.
+
+```c
+static inline const char *JS_ToCStringLen(JSContext *ctx, size_t *plen, JSValueConst val1)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `plen` - Pointer to store the string length (can be `NULL`)
+- `val1` - Value to convert
+
+**Returns:** A UTF-8 string (not necessarily null-terminated), or `NULL` on error
+
+**Example:**
+```c
+size_t len;
+const char *str = JS_ToCStringLen(ctx, &len, val);
+if (!str)
+    return JS_EXCEPTION;
+printf("String length: %zu\n", len);
+JS_FreeCString(ctx, str);
+```
+
+### JS_ToCStringLen2
+
+Converts a JavaScript value to a C string with optional CESU-8 encoding.
+
+```c
+JS_EXTERN const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1, bool cesu8);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `plen` - Pointer to store the string length (can be `NULL`)
+- `val1` - Value to convert
+- `cesu8` - If true, use CESU-8 encoding; otherwise use UTF-8
+
+**Returns:** A string in the specified encoding, or `NULL` on error
+
+### JS_ToCStringUTF16
+
+Converts a JavaScript value to a UTF-16 encoded C string.
+
+```c
+static inline const uint16_t *JS_ToCStringUTF16(JSContext *ctx, JSValueConst val1)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val1` - Value to convert
+
+**Returns:** A UTF-16 encoded string (not null-terminated), or `NULL` on error
+
+**Note:** The returned string must be freed with `JS_FreeCStringUTF16()`. The string may contain unmatched surrogates and is not null-terminated.
+
+### JS_ToCStringLenUTF16
+
+Converts a JavaScript value to a UTF-16 encoded C string with length.
+
+```c
+JS_EXTERN const uint16_t *JS_ToCStringLenUTF16(JSContext *ctx, size_t *plen, JSValueConst val1);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `plen` - Pointer to store the length in uint16_t units (can be `NULL`)
+- `val1` - Value to convert
+
+**Returns:** A UTF-16 encoded string in native endianness, or `NULL` on error
+
+**Note:** The length is in uint16_t units, not code points. A surrogate pair has length 2, an unmatched surrogate has length 1.
+
+### JS_FreeCString
+
+Frees a C string returned by conversion functions.
+
+```c
+JS_EXTERN void JS_FreeCString(JSContext *ctx, const char *ptr);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `ptr` - String to free (can be `NULL`)
+
+### JS_FreeCStringRT
+
+Frees a C string using the runtime.
+
+```c
+JS_EXTERN void JS_FreeCStringRT(JSRuntime *rt, const char *ptr);
+```
+
+**Parameters:**
+- `rt` - JavaScript runtime
+- `ptr` - String to free (can be `NULL`)
+
+### JS_FreeCStringUTF16
+
+Frees a UTF-16 C string.
+
+```c
+JS_EXTERN void JS_FreeCStringUTF16(JSContext *ctx, const uint16_t *ptr);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `ptr` - UTF-16 string to free (can be `NULL`)
+
+### JS_FreeCStringRT_UTF16
+
+Frees a UTF-16 C string using the runtime.
+
+```c
+JS_EXTERN void JS_FreeCStringRT_UTF16(JSRuntime *rt, const uint16_t *ptr);
+```
+
+**Parameters:**
+- `rt` - JavaScript runtime
+- `ptr` - UTF-16 string to free (can be `NULL`)
+
+## To Object
+
+### JS_ToObject
+
+Converts a JavaScript value to an object.
+
+```c
+JS_EXTERN JSValue JS_ToObject(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Value to convert
+
+**Returns:** A new JavaScript object, or `JS_EXCEPTION` on error
+
+**Example:**
+```c
+JSValue obj = JS_ToObject(ctx, val);
+if (JS_IsException(obj))
+    return JS_EXCEPTION;
+// Use obj...
+JS_FreeValue(ctx, obj);
+```
+
+### JS_ToObjectString
+
+Converts a JavaScript value to an Object wrapper string.
+
+```c
+JS_EXTERN JSValue JS_ToObjectString(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Value to convert
+
+**Returns:** A new String object, or `JS_EXCEPTION` on error
+
+## To Other Types
+
+### JS_ToNumber
+
+Converts a JavaScript value to a number.
+
+```c
+JS_EXTERN JSValue JS_ToNumber(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Value to convert
+
+**Returns:** A new JavaScript number, or `JS_EXCEPTION` on error
+
+### JS_ToPropertyKey
+
+Converts a JavaScript value to a property key (string or symbol).
+
+```c
+JS_EXTERN JSValue JS_ToPropertyKey(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Value to convert
+
+**Returns:** A new JavaScript string or symbol, or `JS_EXCEPTION` on error
+
+## Error Handling
+
+Most conversion functions can fail and return an error indicator:
+
+```c
+int32_t value;
+if (JS_ToInt32(ctx, &value, argv[0])) {
+    // Exception occurred - it's already set in the context
+    return JS_EXCEPTION;
+}
+// Successfully converted - use value
+```
+
+For string conversions:
+
+```c
+const char *str = JS_ToCString(ctx, val);
+if (!str) {
+    // Exception occurred
+    return JS_EXCEPTION;
+}
+// Use str...
+JS_FreeCString(ctx, str);
+```

@@ -1,0 +1,314 @@
+---
+title: Embedding QuickJS
+description: Learn how to embed QuickJS in your C/C++ applications
+---
+
+# Embedding QuickJS in Applications
+
+QuickJS can be embedded in C/C++ applications to add JavaScript scripting capabilities. The C API is designed to be simple and efficient.
+
+## Basic Concepts
+
+### Runtime and Contexts
+
+`JSRuntime` represents a JavaScript runtime with its own object heap. Multiple runtimes can exist simultaneously but cannot exchange objects.
+
+`JSContext` represents a JavaScript context (or Realm). Each context has its own global objects. Multiple contexts can exist per runtime and share objects, similar to same-origin frames in a browser.
+
+### JSValue
+
+`JSValue` represents a JavaScript value (primitive or object). QuickJS uses reference counting, so you must explicitly:
+- **Duplicate**: `JS_DupValue()` - increments reference count
+- **Free**: `JS_FreeValue()` - decrements reference count
+
+## Minimal Embedding Example
+
+<Steps>
+
+### Create a runtime and context
+
+```c
+#include <quickjs.h>
+#include <stdio.h>
+
+int main(void) {
+    JSRuntime *rt;
+    JSContext *ctx;
+    
+    // Create runtime
+    rt = JS_NewRuntime();
+    if (!rt) {
+        fprintf(stderr, "Failed to create runtime\n");
+        return 1;
+    }
+    
+    // Create context
+    ctx = JS_NewContext(rt);
+    if (!ctx) {
+        fprintf(stderr, "Failed to create context\n");
+        JS_FreeRuntime(rt);
+        return 1;
+    }
+```
+
+### Evaluate JavaScript code
+
+```c
+    // Evaluate JavaScript
+    const char *code = "1 + 2";
+    JSValue result = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    
+    // Check for exceptions
+    if (JS_IsException(result)) {
+        JSValue exception = JS_GetException(ctx);
+        const char *str = JS_ToCString(ctx, exception);
+        fprintf(stderr, "Exception: %s\n", str);
+        JS_FreeCString(ctx, str);
+        JS_FreeValue(ctx, exception);
+    } else {
+        // Convert result to C string
+        const char *str = JS_ToCString(ctx, result);
+        printf("Result: %s\n", str);
+        JS_FreeCString(ctx, str);
+    }
+    
+    JS_FreeValue(ctx, result);
+```
+
+### Clean up
+
+```c
+    // Cleanup
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    
+    return 0;
+}
+```
+
+</Steps>
+
+## Runtime Configuration
+
+### Memory Limits
+
+```c
+// Set memory limit (0 to disable)
+JS_SetMemoryLimit(rt, 256 * 1024 * 1024); // 256 MB
+
+// Set GC threshold
+JS_SetGCThreshold(rt, 1024 * 1024); // 1 MB
+```
+
+Signature:
+```c
+JS_EXTERN void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
+JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
+```
+
+### Stack Size
+
+```c
+// Set maximum stack size (0 to disable)
+JS_SetMaxStackSize(rt, 1024 * 1024); // 1 MB
+```
+
+Signature:
+```c
+JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
+```
+
+### Runtime Information
+
+```c
+// Set runtime info for debugging
+JS_SetRuntimeInfo(rt, "MyApp Runtime");
+
+// Enable debug dumps
+JS_SetDumpFlags(rt, JS_DUMP_LEAKS | JS_DUMP_MEM);
+```
+
+Signatures:
+```c
+JS_EXTERN void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
+JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
+```
+
+## Exposing C Functions
+
+### Simple C Function
+
+```c
+static JSValue js_add(JSContext *ctx, JSValueConst this_val,
+                      int argc, JSValueConst *argv)
+{
+    int a, b;
+    
+    // Convert arguments
+    if (JS_ToInt32(ctx, &a, argv[0]))
+        return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &b, argv[1]))
+        return JS_EXCEPTION;
+    
+    // Return result
+    return JS_NewInt32(ctx, a + b);
+}
+
+// Register the function
+JSValue global = JS_GetGlobalObject(ctx);
+JS_SetPropertyStr(ctx, global, "add",
+                  JS_NewCFunction(ctx, js_add, "add", 2));
+JS_FreeValue(ctx, global);
+```
+
+Signature:
+```c
+typedef JSValue JSCFunction(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv);
+
+JS_EXTERN JSValue JS_NewCFunction(JSContext *ctx, JSCFunction *func,
+                                   const char *name, int length);
+```
+
+### Function List
+
+```c
+static const JSCFunctionListEntry js_mylib_funcs[] = {
+    JS_CFUNC_DEF("add", 2, js_add),
+    JS_CFUNC_DEF("multiply", 2, js_multiply),
+};
+
+JSValue global = JS_GetGlobalObject(ctx);
+JS_SetPropertyFunctionList(ctx, global, js_mylib_funcs,
+                           countof(js_mylib_funcs));
+JS_FreeValue(ctx, global);
+```
+
+## Type Conversions
+
+### JavaScript to C
+
+```c
+// To int32
+int32_t val;
+if (JS_ToInt32(ctx, &val, jsval))
+    return JS_EXCEPTION;
+
+// To int64
+int64_t val64;
+if (JS_ToInt64(ctx, &val64, jsval))
+    return JS_EXCEPTION;
+
+// To double
+double d;
+if (JS_ToFloat64(ctx, &d, jsval))
+    return JS_EXCEPTION;
+
+// To C string
+const char *str = JS_ToCString(ctx, jsval);
+if (!str)
+    return JS_EXCEPTION;
+// ... use string ...
+JS_FreeCString(ctx, str);
+```
+
+Signatures:
+```c
+JS_EXTERN int JS_ToInt32(JSContext *ctx, int32_t *pres, JSValueConst val);
+JS_EXTERN int JS_ToInt64(JSContext *ctx, int64_t *pres, JSValueConst val);
+JS_EXTERN int JS_ToFloat64(JSContext *ctx, double *pres, JSValueConst val);
+JS_EXTERN const char *JS_ToCString(JSContext *ctx, JSValueConst val);
+```
+
+### C to JavaScript
+
+```c
+// From int32
+JSValue val = JS_NewInt32(ctx, 42);
+
+// From int64
+JSValue val64 = JS_NewInt64(ctx, 9007199254740991LL);
+
+// From double
+JSValue d = JS_NewFloat64(ctx, 3.14159);
+
+// From string
+JSValue str = JS_NewString(ctx, "hello");
+
+// From boolean
+JSValue b = JS_NewBool(ctx, true);
+```
+
+Signatures:
+```c
+static inline JSValue JS_NewInt32(JSContext *ctx, int32_t val);
+static inline JSValue JS_NewInt64(JSContext *ctx, int64_t val);
+static inline JSValue JS_NewFloat64(JSContext *ctx, double val);
+static inline JSValue JS_NewString(JSContext *ctx, const char *str);
+static inline JSValue JS_NewBool(JSContext *ctx, bool val);
+```
+
+## Exception Handling
+
+Most C API functions can return `JS_EXCEPTION`. Always check for exceptions:
+
+```c
+JSValue result = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
+
+if (JS_IsException(result)) {
+    // Get the exception object
+    JSValue exception = JS_GetException(ctx);
+    
+    // Convert to string for display
+    const char *str = JS_ToCString(ctx, exception);
+    fprintf(stderr, "Error: %s\n", str);
+    JS_FreeCString(ctx, str);
+    
+    JS_FreeValue(ctx, exception);
+}
+
+JS_FreeValue(ctx, result);
+```
+
+Signatures:
+```c
+JS_EXTERN bool JS_IsException(JSValueConst v);
+JS_EXTERN JSValue JS_GetException(JSContext *ctx);
+JS_EXTERN bool JS_HasException(JSContext *ctx);
+```
+
+## Evaluation Flags
+
+```c
+// Evaluate as global script (default)
+JSValue val = JS_Eval(ctx, code, len, "file.js", JS_EVAL_TYPE_GLOBAL);
+
+// Evaluate as ES6 module
+JSValue mod = JS_Eval(ctx, code, len, "module.js", JS_EVAL_TYPE_MODULE);
+
+// Compile only (returns bytecode function)
+JSValue bc = JS_Eval(ctx, code, len, "file.js",
+                     JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+
+// Execute later
+JSValue result = JS_EvalFunction(ctx, bc);
+```
+
+Signature:
+```c
+JS_EXTERN JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
+                          const char *filename, int eval_flags);
+```
+
+Eval flags:
+- `JS_EVAL_TYPE_GLOBAL` - Global script (default)
+- `JS_EVAL_TYPE_MODULE` - ES6 module
+- `JS_EVAL_FLAG_STRICT` - Force strict mode
+- `JS_EVAL_FLAG_COMPILE_ONLY` - Compile but don't execute
+- `JS_EVAL_FLAG_BACKTRACE_BARRIER` - Don't include prior frames in backtraces
+
+## Next Steps
+
+- [Native Modules](/advanced/native-modules) - Create loadable C modules
+- [Memory Management](/advanced/memory-management) - Custom allocators and limits
+- [Performance](/advanced/performance) - Optimize your embedded JavaScript

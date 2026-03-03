@@ -1,0 +1,203 @@
+---
+title: Catching Exceptions
+description: Retrieving and checking for exceptions in QuickJS
+---
+
+# Catching Exceptions
+
+When calling JavaScript functions or evaluating code from C, you need to check for exceptions and handle them appropriately. QuickJS provides functions to detect and retrieve exceptions.
+
+## JS_GetException
+
+Retrieves the pending exception from the context.
+
+### Signature
+
+```c
+JSValue JS_GetException(JSContext *ctx);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+
+### Return Value
+
+Returns the exception object. The caller owns the returned value and must free it with `JS_FreeValue()`.
+
+### Description
+
+`JS_GetException()` retrieves and clears the pending exception from the context. After calling this function, the context no longer has a pending exception unless a new one is thrown.
+
+### Example
+
+```c
+JSValue result = JS_Eval(ctx, "throw new Error('Test error');", 27,
+                         "<eval>", JS_EVAL_TYPE_GLOBAL);
+
+if (JS_IsException(result)) {
+    JSValue exception = JS_GetException(ctx);
+    
+    // Convert to string for logging
+    const char *str = JS_ToCString(ctx, exception);
+    if (str) {
+        printf("Exception: %s\n", str);
+        JS_FreeCString(ctx, str);
+    }
+    
+    JS_FreeValue(ctx, exception);
+    JS_FreeValue(ctx, result);
+    return -1;
+}
+
+JS_FreeValue(ctx, result);
+```
+
+## JS_HasException
+
+Checks if there is a pending exception in the context.
+
+### Signature
+
+```c
+bool JS_HasException(JSContext *ctx);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+
+### Return Value
+
+Returns `true` if there is a pending exception, `false` otherwise.
+
+### Description
+
+`JS_HasException()` allows you to check for exceptions without retrieving them. This is useful when you want to test for errors before deciding how to handle them.
+
+### Example
+
+```c
+JSValue result = JS_Call(ctx, func, JS_UNDEFINED, 0, NULL);
+
+if (JS_HasException(ctx)) {
+    // Handle the exception
+    JSValue exc = JS_GetException(ctx);
+    handle_error(ctx, exc);
+    JS_FreeValue(ctx, exc);
+}
+
+JS_FreeValue(ctx, result);
+```
+
+## Exception Handling Pattern
+
+The typical pattern for handling exceptions in C code:
+
+```c
+JSValue my_function(JSContext *ctx, JSValueConst this_val,
+                   int argc, JSValueConst *argv) {
+    JSValue result = JS_Call(ctx, some_function, JS_UNDEFINED, argc, argv);
+    
+    // Check if the call resulted in an exception
+    if (JS_IsException(result)) {
+        // Option 1: Propagate the exception
+        return JS_EXCEPTION;
+        
+        // Option 2: Handle and clear the exception
+        JSValue exc = JS_GetException(ctx);
+        
+        // Extract error information
+        JSValue message = JS_GetPropertyStr(ctx, exc, "message");
+        const char *msg = JS_ToCString(ctx, message);
+        printf("Caught error: %s\n", msg ? msg : "unknown");
+        JS_FreeCString(ctx, msg);
+        JS_FreeValue(ctx, message);
+        JS_FreeValue(ctx, exc);
+        
+        // Return a default value instead
+        return JS_UNDEFINED;
+    }
+    
+    return result;
+}
+```
+
+## Extracting Error Information
+
+You can extract detailed information from error objects:
+
+```c
+void print_error(JSContext *ctx, JSValue exception) {
+    // Get the error message
+    JSValue message = JS_GetPropertyStr(ctx, exception, "message");
+    const char *msg = JS_ToCString(ctx, message);
+    
+    // Get the stack trace (if available)
+    JSValue stack = JS_GetPropertyStr(ctx, exception, "stack");
+    const char *stack_str = JS_ToCString(ctx, stack);
+    
+    printf("Error: %s\n", msg ? msg : "(no message)");
+    if (stack_str) {
+        printf("Stack:\n%s\n", stack_str);
+    }
+    
+    JS_FreeCString(ctx, msg);
+    JS_FreeCString(ctx, stack_str);
+    JS_FreeValue(ctx, message);
+    JS_FreeValue(ctx, stack);
+}
+
+// Usage
+if (JS_IsException(result)) {
+    JSValue exc = JS_GetException(ctx);
+    print_error(ctx, exc);
+    JS_FreeValue(ctx, exc);
+}
+```
+
+## JS_IsError
+
+Checks if a value is an Error object.
+
+### Signature
+
+```c
+bool JS_IsError(JSValueConst val);
+```
+
+### Parameters
+
+- `val` - The value to check
+
+### Return Value
+
+Returns `true` if the value is an Error object, `false` otherwise.
+
+### Example
+
+```c
+if (JS_IsException(result)) {
+    JSValue exc = JS_GetException(ctx);
+    
+    if (JS_IsError(exc)) {
+        printf("Caught an Error object\n");
+    } else {
+        printf("Caught a non-Error exception\n");
+    }
+    
+    JS_FreeValue(ctx, exc);
+}
+```
+
+## Best Practices
+
+1. **Always check return values**: Functions that return `JSValue` may return `JS_EXCEPTION`.
+2. **Free exception objects**: After calling `JS_GetException()`, you must free the returned value.
+3. **Don't double-free**: When a function returns `JS_EXCEPTION`, don't call `JS_FreeValue()` on that return value.
+4. **Clear or propagate**: Either handle and clear the exception with `JS_GetException()`, or propagate it by returning `JS_EXCEPTION`.
+
+## See Also
+
+- [Throwing Exceptions](/api/exceptions/throwing) - Creating and throwing exceptions
+- [Error Types](/api/exceptions/error-types) - Standard JavaScript error constructors

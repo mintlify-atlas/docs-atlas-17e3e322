@@ -1,0 +1,421 @@
+---
+title: Value Creation
+description: Functions for creating JavaScript values from C types
+---
+
+# Value Creation
+
+These functions create new JavaScript values from C types. All creation functions return a new `JSValue` that must be freed with `JS_FreeValue()` when no longer needed.
+
+## Primitive Values
+
+### JS_NewBool
+
+Creates a JavaScript boolean value.
+
+```c
+static inline JSValue JS_NewBool(JSContext *ctx, bool val)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Boolean value (0 for false, non-zero for true)
+
+**Returns:** A new JavaScript boolean value
+
+**Example:**
+```c
+JSValue true_val = JS_NewBool(ctx, 1);
+JSValue false_val = JS_NewBool(ctx, 0);
+// ... use values ...
+JS_FreeValue(ctx, true_val);
+JS_FreeValue(ctx, false_val);
+```
+
+### JS_NewInt32
+
+Creates a JavaScript number from a 32-bit integer.
+
+```c
+static inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - 32-bit signed integer value
+
+**Returns:** A new JavaScript number
+
+**Example:**
+```c
+JSValue num = JS_NewInt32(ctx, 42);
+JS_FreeValue(ctx, num);
+```
+
+### JS_NewInt64
+
+Creates a JavaScript number from a 64-bit integer. Uses int32 representation if the value fits, otherwise converts to float64.
+
+```c
+static inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context  
+- `val` - 64-bit signed integer value
+
+**Returns:** A new JavaScript number
+
+### JS_NewUint32
+
+Creates a JavaScript number from an unsigned 32-bit integer.
+
+```c
+static inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - 32-bit unsigned integer value
+
+**Returns:** A new JavaScript number
+
+### JS_NewFloat64
+
+Creates a JavaScript number from a double-precision floating point value.
+
+```c
+static inline JSValue JS_NewFloat64(JSContext *ctx, double val)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Double-precision floating point value
+
+**Returns:** A new JavaScript number
+
+**Example:**
+```c
+static JSValue js_point_norm(JSContext *ctx, JSValue this_val,
+                             int argc, JSValue *argv)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    return JS_NewFloat64(ctx, sqrt((double)s->x * s->x + (double)s->y * s->y));
+}
+```
+
+### JS_NewNumber
+
+Creates a JavaScript number from a double, choosing the optimal internal representation.
+
+```c
+JS_EXTERN JSValue JS_NewNumber(JSContext *ctx, double d);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `d` - Double value
+
+**Returns:** A new JavaScript number
+
+## BigInt Values
+
+### JS_NewBigInt64
+
+Creates a JavaScript BigInt from a 64-bit signed integer.
+
+```c
+JS_EXTERN JSValue JS_NewBigInt64(JSContext *ctx, int64_t v);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `v` - 64-bit signed integer value
+
+**Returns:** A new JavaScript BigInt
+
+### JS_NewBigUint64
+
+Creates a JavaScript BigInt from a 64-bit unsigned integer.
+
+```c
+JS_EXTERN JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `v` - 64-bit unsigned integer value
+
+**Returns:** A new JavaScript BigInt
+
+## String Values
+
+### JS_NewString
+
+Creates a JavaScript string from a null-terminated C string.
+
+```c
+static inline JSValue JS_NewString(JSContext *ctx, const char *str)
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `str` - Null-terminated UTF-8 or ASCII string
+
+**Returns:** A new JavaScript string
+
+**Example:**
+```c
+JSValue str = JS_NewString(ctx, "Hello, World!");
+JS_FreeValue(ctx, str);
+```
+
+### JS_NewStringLen
+
+Creates a JavaScript string from a C string with explicit length.
+
+```c
+JS_EXTERN JSValue JS_NewStringLen(JSContext *ctx, const char *str1, size_t len1);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `str1` - UTF-8 or ASCII string (need not be null-terminated)
+- `len1` - Length of the string in bytes
+
+**Returns:** A new JavaScript string
+
+### JS_NewStringUTF16
+
+Creates a JavaScript string from a UTF-16 encoded buffer.
+
+```c
+JS_EXTERN JSValue JS_NewStringUTF16(JSContext *ctx, const uint16_t *buf, size_t len);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `buf` - UTF-16 encoded string buffer
+- `len` - Length in uint16_t units (not code points)
+
+**Returns:** A new JavaScript string
+
+**Note:** The function makes a copy of the input buffer. It does not validate if the input is valid UTF-16 - that is the caller's responsibility.
+
+### JS_NewAtomString
+
+Creates a JavaScript string from a null-terminated C string, using atom optimization.
+
+```c
+JS_EXTERN JSValue JS_NewAtomString(JSContext *ctx, const char *str);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `str` - Null-terminated UTF-8 or ASCII string
+
+**Returns:** A new JavaScript string
+
+## Object Values
+
+### JS_NewObject
+
+Creates a new JavaScript object with the default Object prototype.
+
+```c
+JS_EXTERN JSValue JS_NewObject(JSContext *ctx);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+
+**Returns:** A new JavaScript object
+
+**Example:**
+```c
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, obj, "foo", JS_NewString(ctx, "bar"));
+JS_FreeValue(ctx, obj);
+```
+
+### JS_NewObjectProto
+
+Creates a new JavaScript object with a specific prototype.
+
+```c
+JS_EXTERN JSValue JS_NewObjectProto(JSContext *ctx, JSValueConst proto);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `proto` - Prototype object or `JS_NULL`
+
+**Returns:** A new JavaScript object
+
+### JS_NewObjectClass
+
+Creates a new JavaScript object of a specific class.
+
+```c
+JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, JSClassID class_id);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `class_id` - Class ID for the object
+
+**Returns:** A new JavaScript object of the specified class
+
+### JS_NewObjectProtoClass
+
+Creates a new JavaScript object with a specific prototype and class.
+
+```c
+JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto, JSClassID class_id);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `proto` - Prototype object or `JS_NULL`
+- `class_id` - Class ID for the object
+
+**Returns:** A new JavaScript object
+
+**Example:**
+```c
+JSValue proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+if (JS_IsException(proto))
+    goto fail;
+JSValue obj = JS_NewObjectProtoClass(ctx, proto, js_point_class_id);
+JS_FreeValue(ctx, proto);
+if (JS_IsException(obj))
+    goto fail;
+JS_SetOpaque(obj, s);
+return obj;
+```
+
+### JS_NewObjectFrom
+
+Creates a new JavaScript object from arrays of atoms and values.
+
+```c
+JS_EXTERN JSValue JS_NewObjectFrom(JSContext *ctx, int count,
+                                  const JSAtom *props,
+                                  const JSValue *values);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `count` - Number of properties
+- `props` - Array of property name atoms
+- `values` - Array of property values (ownership transferred)
+
+**Returns:** A new JavaScript object
+
+**Note:** This function takes ownership of the values in the `values` array.
+
+### JS_NewObjectFromStr
+
+Creates a new JavaScript object from arrays of string names and values.
+
+```c
+JS_EXTERN JSValue JS_NewObjectFromStr(JSContext *ctx, int count,
+                                      const char **props,
+                                      const JSValue *values);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `count` - Number of properties
+- `props` - Array of property name strings
+- `values` - Array of property values (ownership transferred)
+
+**Returns:** A new JavaScript object
+
+**Note:** This function takes ownership of the values in the `values` array.
+
+## Array Values
+
+### JS_NewArray
+
+Creates a new JavaScript array.
+
+```c
+JS_EXTERN JSValue JS_NewArray(JSContext *ctx);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+
+**Returns:** A new empty JavaScript array
+
+**Example:**
+```c
+JSValue arr = JS_NewArray(ctx);
+JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, 1));
+JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, 2));
+JS_SetPropertyUint32(ctx, arr, 2, JS_NewInt32(ctx, 3));
+JS_FreeValue(ctx, arr);
+```
+
+### JS_NewArrayFrom
+
+Creates a new JavaScript array from a C array of values.
+
+```c
+JS_EXTERN JSValue JS_NewArrayFrom(JSContext *ctx, int count, const JSValue *values);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `count` - Number of elements
+- `values` - Array of values (ownership transferred)
+
+**Returns:** A new JavaScript array
+
+**Note:** This function takes ownership of the values in the `values` array.
+
+## Special Values
+
+QuickJS provides several predefined constant values:
+
+```c
+#define JS_NULL      JS_MKVAL(JS_TAG_NULL, 0)
+#define JS_UNDEFINED JS_MKVAL(JS_TAG_UNDEFINED, 0)
+#define JS_FALSE     JS_MKVAL(JS_TAG_BOOL, 0)
+#define JS_TRUE      JS_MKVAL(JS_TAG_BOOL, 1)
+#define JS_EXCEPTION JS_MKVAL(JS_TAG_EXCEPTION, 0)
+#define JS_UNINITIALIZED JS_MKVAL(JS_TAG_UNINITIALIZED, 0)
+```
+
+**Example:**
+```c
+if (error_condition) {
+    return JS_EXCEPTION;
+}
+return JS_UNDEFINED;
+```
+
+## Memory Management
+
+All created values (except special constants) must be freed when no longer needed:
+
+```c
+JSValue val = JS_NewString(ctx, "test");
+// ... use val ...
+JS_FreeValue(ctx, val);
+```
+
+For functions taking ownership of values, you don't need to free them:
+
+```c
+JSValue values[] = {
+    JS_NewInt32(ctx, 1),
+    JS_NewInt32(ctx, 2)
+};
+JSValue arr = JS_NewArrayFrom(ctx, 2, values);
+// Don't free values[0] or values[1] - ownership transferred
+JS_FreeValue(ctx, arr);  // This will free the array and its elements
+```

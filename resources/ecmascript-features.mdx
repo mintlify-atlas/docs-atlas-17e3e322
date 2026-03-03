@@ -1,0 +1,51 @@
+---
+title: ECMAScript Features
+description: Modern JavaScript features supported by QuickJS-ng
+---
+
+# ECMAScript Features
+
+QuickJS-ng aims to support the latest available ECMAScript features once they hit the spec. The project focuses on delivering state-of-the-art JavaScript features, typically once they are stable (stage 4) but sometimes even at earlier stages.
+
+## Feature Support
+
+QuickJS-ng includes support for a wide range of modern ECMAScript features:
+
+### Data Structures
+- **Resizable ArrayBuffer** - Dynamic buffer resizing capabilities
+- **Float16Array** - 16-bit floating point typed arrays
+- **WeakRef** - Weak references to objects
+- **FinalizationRegistry** - Cleanup callbacks when objects are garbage collected
+- **Set operations** - Mathematical set operations
+
+### Language Features
+- **Iterator Helpers** - Convenient methods for working with iterators
+- **Promise.try** - Synchronous function wrapping in promises
+- **Error.isError** - Check if a value is an Error object
+
+### Non-Standard APIs
+
+Some non-standard but widely used APIs have also been added for compatibility:
+
+- **V8's [Stack Trace API](https://v8.dev/docs/stack-trace-api)**
+  - `Error.captureStackTrace`
+  - `Error.prepareStackTrace`
+  - `Error.stackTraceLimit`
+
+## Test262 Compliance
+
+Progress on Test262 compliance can be tracked at:
+
+<Card title="Test262 Compliance Dashboard" href="https://test262.fyi/#|qjs_ng" icon="chart-line">
+  View real-time compliance status for QuickJS-ng on Test262.fyi
+</Card>
+
+## Limitations
+
+### Internationalization (Intl)
+
+Due to size constraints, it is unlikely QuickJS will ever support the [Intl](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl) APIs. The Intl specification is large and would significantly increase the engine's footprint, which goes against QuickJS-ng's goal of being small and embeddable.
+
+## ECMAScript Specification
+
+QuickJS-ng targets the latest [ECMAScript specification](https://tc39.es/ecma262/) published by TC39. New features are typically added soon after reaching stage 4 in the TC39 process.

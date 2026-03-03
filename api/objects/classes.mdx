@@ -1,0 +1,333 @@
+---
+title: Custom Classes
+description: Define custom JavaScript classes backed by C data structures
+---
+
+# Custom JavaScript Classes
+
+QuickJS allows you to attach C opaque data to JavaScript objects using the class system.
+
+## Overview
+
+Creating a custom class involves:
+
+1. Allocating a class ID
+2. Defining the class with a `JSClassDef`
+3. Creating instances with `JS_NewObjectClass()`
+4. Attaching C data with `JS_SetOpaque()`
+5. Retrieving C data with `JS_GetOpaque()`
+
+## Class ID Management
+
+### JS_NewClassID
+
+Allocate a new class ID.
+
+```c
+JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id);
+```
+
+#### Parameters
+
+- `rt` - The JavaScript runtime
+- `pclass_id` - Pointer to a class ID variable (will be set to the new ID)
+
+#### Returns
+
+Returns the new class ID.
+
+#### Example
+
+```c
+static JSClassID js_point_class_id;
+
+// During initialization
+JS_NewClassID(rt, &js_point_class_id);
+```
+
+## Class Definition
+
+### JSClassDef Structure
+
+```c
+typedef struct JSClassDef {
+    const char *class_name;
+    JSClassFinalizer *finalizer;
+    JSClassGCMark *gc_mark;
+    JSClassCall *call;
+    JSClassExoticMethods *exotic;
+} JSClassDef;
+```
+
+### JSClassFinalizer
+
+Called when an object is garbage collected.
+
+```c
+typedef void JSClassFinalizer(JSRuntime *rt, JSValueConst val);
+```
+
+**Important:** The finalizer should only release C resources. It is invalid to execute JavaScript code from it.
+
+### JSClassGCMark
+
+Called during garbage collection to mark referenced objects.
+
+```c
+typedef void JSClassGCMark(JSRuntime *rt, JSValueConst val,
+                          JS_MarkFunc *mark_func);
+```
+
+### JS_NewClass
+
+Register a new class.
+
+```c
+int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def);
+```
+
+#### Example from point.c
+
+```c
+typedef struct {
+    int x;
+    int y;
+} JSPointData;
+
+static void js_point_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSPointData *s = JS_GetOpaque(val, js_point_class_id);
+    /* Note: 's' can be NULL in case JS_SetOpaque() was not called */
+    js_free_rt(rt, s);
+}
+
+static JSClassDef js_point_class = {
+    "Point",
+    .finalizer = js_point_finalizer,
+};
+
+static int js_point_init(JSContext *ctx, JSModuleDef *m)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    
+    /* create the Point class */
+    JS_NewClassID(rt, &js_point_class_id);
+    JS_NewClass(rt, js_point_class_id, &js_point_class);
+    
+    // ... create prototype and constructor
+    
+    return 0;
+}
+```
+
+## Setting Up Class Prototype
+
+### JS_SetClassProto
+
+Set the prototype for a class.
+
+```c
+void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj);
+```
+
+#### Example from point.c
+
+```c
+JSValue point_proto = JS_NewObject(ctx);
+JS_SetPropertyFunctionList(ctx, point_proto, js_point_proto_funcs,
+                          countof(js_point_proto_funcs));
+
+JSValue point_class = JS_NewCFunction2(ctx, js_point_ctor, "Point", 2,
+                                       JS_CFUNC_constructor, 0);
+JS_SetConstructor(ctx, point_class, point_proto);
+JS_SetClassProto(ctx, js_point_class_id, point_proto);
+```
+
+### JS_GetClassProto
+
+Get the prototype for a class.
+
+```c
+JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
+```
+
+## Creating Class Instances
+
+Use `JS_NewObjectClass()` or `JS_NewObjectProtoClass()` as shown in the [Object Creation](/api/objects/creation) page.
+
+## Opaque Data Management
+
+### JS_SetOpaque
+
+Attach C data to an object.
+
+```c
+int JS_SetOpaque(JSValueConst obj, void *opaque);
+```
+
+#### Parameters
+
+- `obj` - The object (must be a custom class instance)
+- `opaque` - Pointer to C data
+
+#### Returns
+
+Returns 0 on success, -1 on error.
+
+**Note:** Only supported for custom classes.
+
+### JS_GetOpaque
+
+Retrieve C data from an object.
+
+```c
+void *JS_GetOpaque(JSValueConst obj, JSClassID class_id);
+```
+
+#### Parameters
+
+- `obj` - The object
+- `class_id` - Expected class ID
+
+#### Returns
+
+Returns the opaque pointer, or `NULL` if the object is not of the specified class or if no opaque data was set.
+
+### JS_GetOpaque2
+
+Retrieve C data with automatic exception throwing.
+
+```c
+void *JS_GetOpaque2(JSContext *ctx, JSValueConst obj, JSClassID class_id);
+```
+
+Returns the opaque pointer, or `NULL` and throws a TypeError if the object is not of the specified class.
+
+### Example from point.c
+
+```c
+static JSValue js_point_get_xy(JSContext *ctx, JSValue this_val, int magic)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    if (magic == 0)
+        return JS_NewInt32(ctx, s->x);
+    else
+        return JS_NewInt32(ctx, s->y);
+}
+
+static JSValue js_point_set_xy(JSContext *ctx, JSValue this_val, 
+                               JSValue val, int magic)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    int v;
+    if (!s)
+        return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &v, val))
+        return JS_EXCEPTION;
+    if (magic == 0)
+        s->x = v;
+    else
+        s->y = v;
+    return JS_UNDEFINED;
+}
+```
+
+## Complete Example: Point Class
+
+From `examples/point.c`:
+
+```c
+typedef struct {
+    int x;
+    int y;
+} JSPointData;
+
+static JSClassID js_point_class_id;
+
+static void js_point_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSPointData *s = JS_GetOpaque(val, js_point_class_id);
+    js_free_rt(rt, s);
+}
+
+static JSValue js_point_norm(JSContext *ctx, JSValue this_val,
+                             int argc, JSValue *argv)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    return JS_NewFloat64(ctx, sqrt((double)s->x * s->x + (double)s->y * s->y));
+}
+
+static JSClassDef js_point_class = {
+    "Point",
+    .finalizer = js_point_finalizer,
+};
+
+static const JSCFunctionListEntry js_point_proto_funcs[] = {
+    JS_CGETSET_MAGIC_DEF("x", js_point_get_xy, js_point_set_xy, 0),
+    JS_CGETSET_MAGIC_DEF("y", js_point_get_xy, js_point_set_xy, 1),
+    JS_CFUNC_DEF("norm", 0, js_point_norm),
+};
+
+static int js_point_init(JSContext *ctx, JSModuleDef *m)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    
+    JS_NewClassID(rt, &js_point_class_id);
+    JS_NewClass(rt, js_point_class_id, &js_point_class);
+    
+    JSValue point_proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, point_proto, js_point_proto_funcs,
+                              countof(js_point_proto_funcs));
+    
+    JSValue point_class = JS_NewCFunction2(ctx, js_point_ctor, "Point", 2,
+                                           JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, point_class, point_proto);
+    JS_SetClassProto(ctx, js_point_class_id, point_proto);
+    
+    JS_SetModuleExport(ctx, m, "Point", point_class);
+    return 0;
+}
+```
+
+## Class Utilities
+
+### JS_GetClassID
+
+Get the class ID of an object.
+
+```c
+JSClassID JS_GetClassID(JSValueConst v);
+```
+
+Returns the class ID if `v` is an object, otherwise returns `JS_INVALID_CLASS_ID`.
+
+### JS_IsRegisteredClass
+
+Check if a class ID is registered.
+
+```c
+bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id);
+```
+
+### JS_GetClassName
+
+Get the name of a registered class.
+
+```c
+JSAtom JS_GetClassName(JSRuntime *rt, JSClassID class_id);
+```
+
+Returns the class name atom or `JS_ATOM_NULL` if not registered. Must be freed with `JS_FreeAtom()`.
+
+## Notes
+
+- Class IDs are allocated per-runtime
+- `JSClassDef` structures are allocated per-runtime
+- Prototypes are set per-context with `JS_SetClassProto()`
+- Always use `JS_GetOpaque2()` in methods that need type checking
+- Finalizers run during garbage collection - don't execute JavaScript code in them
+- Use `gc_mark` to tell the GC about objects referenced by your C data

@@ -1,0 +1,458 @@
+---
+title: Performance Tuning
+description: Optimize QuickJS runtime performance, reduce memory usage, and improve execution speed
+---
+
+# Performance Tuning and Optimization
+
+QuickJS is designed to be small and efficient. This guide covers techniques to optimize performance for your specific use case.
+
+## Build Options
+
+### Compiler Optimizations
+
+From `CMakeLists.txt`, QuickJS supports various build configurations:
+
+```cmake
+# Release build (optimized)
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make
+
+# Debug build (development)
+cmake -DCMAKE_BUILD_TYPE=Debug ..
+make
+```
+
+Release builds use `-O2` or `-O3` optimizations and strip debug symbols.
+
+### Disable Parser
+
+For embedded systems where code is pre-compiled, disable the parser:
+
+```cmake
+cmake -DQJS_DISABLE_PARSER=ON ..
+make
+```
+
+This significantly reduces binary size but requires all code to be compiled to bytecode using `qjsc`.
+
+### Static Builds
+
+Create standalone executables with no runtime dependencies:
+
+```cmake
+cmake -DQJS_BUILD_CLI_STATIC=ON ..
+make
+```
+
+### Sanitizers (Development Only)
+
+Enable sanitizers to catch bugs that may affect performance:
+
+```cmake
+# Address Sanitizer
+cmake -DQJS_ENABLE_ASAN=ON ..
+
+# Undefined Behavior Sanitizer
+cmake -DQJS_ENABLE_UBSAN=ON ..
+
+# Thread Sanitizer (for workers)
+cmake -DQJS_ENABLE_TSAN=ON ..
+```
+
+<Warning>
+Never use sanitizers in production - they significantly reduce performance.
+</Warning>
+
+## Memory Optimization
+
+### Tune GC Threshold
+
+Balance memory usage vs. GC frequency:
+
+```c
+// Lower threshold = more frequent GC = less memory, more CPU
+JS_SetGCThreshold(rt, 512 * 1024);  // 512 KB
+
+// Higher threshold = less frequent GC = more memory, less CPU
+JS_SetGCThreshold(rt, 8 * 1024 * 1024);  // 8 MB
+```
+
+Profile your application to find the optimal threshold.
+
+### Set Memory Limits
+
+Prevent memory bloat:
+
+```c
+// Hard limit on total memory
+JS_SetMemoryLimit(rt, 128 * 1024 * 1024);  // 128 MB
+```
+
+### Minimize Context Count
+
+Each context has overhead. Share contexts when possible:
+
+```c
+// Good: One context for related operations
+JSContext *ctx = JS_NewContext(rt);
+
+// Bad: Creating many contexts unnecessarily
+for (int i = 0; i < 100; i++) {
+    JSContext *ctx = JS_NewContext(rt);  // Wasteful
+    // ...
+    JS_FreeContext(ctx);
+}
+```
+
+### Use Bytecode Compilation
+
+Pre-compile scripts to bytecode:
+
+```bash
+# Compile script to bytecode
+qjsc -o script.c -m script.js
+
+# Compile to standalone executable
+qjsc -o script script.js
+```
+
+Load bytecode instead of source:
+
+```c
+// Compile once (at build time or first run)
+JSValue bytecode = JS_Eval(ctx, code, len, "file.js",
+                           JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+
+// Serialize bytecode
+size_t bc_len;
+uint8_t *bc = JS_WriteObject(ctx, &bc_len, bytecode, JS_WRITE_OBJ_BYTECODE);
+
+// Later: deserialize and execute (much faster)
+JSValue bc_obj = JS_ReadObject(ctx, bc, bc_len, JS_READ_OBJ_BYTECODE);
+JSValue result = JS_EvalFunction(ctx, bc_obj);
+```
+
+Signatures:
+```c
+JS_EXTERN uint8_t *JS_WriteObject(JSContext *ctx, size_t *psize,
+                                   JSValueConst obj, int flags);
+JS_EXTERN JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf,
+                                size_t buf_len, int flags);
+JS_EXTERN JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj);
+```
+
+## Execution Optimization
+
+### Stack Size Configuration
+
+Adjust stack size based on your recursion needs:
+
+```c
+// Smaller stack for simple scripts (saves memory)
+JS_SetMaxStackSize(rt, 256 * 1024);  // 256 KB
+
+// Larger stack for deep recursion
+JS_SetMaxStackSize(rt, 2 * 1024 * 1024);  // 2 MB
+```
+
+Default is `JS_DEFAULT_STACK_SIZE` (1 MB).
+
+### Minimize JSValue Conversions
+
+Conversions between C and JavaScript types have overhead:
+
+```c
+// Inefficient: multiple conversions
+for (int i = 0; i < 1000; i++) {
+    JSValue val = JS_NewInt32(ctx, i);
+    JS_SetPropertyUint32(ctx, array, i, val);
+}
+
+// Better: batch operations when possible
+JSValue *values = malloc(1000 * sizeof(JSValue));
+for (int i = 0; i < 1000; i++) {
+    values[i] = JS_NewInt32(ctx, i);
+}
+JSValue array = JS_NewArrayFrom(ctx, 1000, values);
+free(values);
+```
+
+### Avoid Unnecessary Exception Checks
+
+Exception checks have minimal overhead, but can add up:
+
+```c
+// If you know the operation won't fail, you can skip the check
+JSValue val = JS_NewInt32(ctx, 42);  // Never fails
+// No need to check JS_IsException(val)
+
+// But always check user input
+JSValue result = JS_Eval(ctx, user_code, len, "<user>", JS_EVAL_TYPE_GLOBAL);
+if (JS_IsException(result)) {
+    // Handle error
+}
+```
+
+## Function Call Optimization
+
+### Direct C Function Calls
+
+Use C functions instead of JavaScript for performance-critical code:
+
+```c
+// Fast: Pure C implementation
+static JSValue js_fast_compute(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv)
+{
+    int32_t a, b;
+    JS_ToInt32(ctx, &a, argv[0]);
+    JS_ToInt32(ctx, &b, argv[1]);
+    
+    // Complex computation in C
+    int32_t result = /* ... */;
+    
+    return JS_NewInt32(ctx, result);
+}
+```
+
+### Function Magic Numbers
+
+Use magic numbers to create specialized versions:
+
+```c
+static JSValue js_array_method(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv, int magic)
+{
+    switch (magic) {
+        case 0: // push
+            // ...
+            break;
+        case 1: // pop
+            // ...
+            break;
+        case 2: // shift
+            // ...
+            break;
+    }
+}
+
+JSCFunctionListEntry funcs[] = {
+    JS_CFUNC_MAGIC_DEF("push", 1, js_array_method, 0),
+    JS_CFUNC_MAGIC_DEF("pop", 0, js_array_method, 1),
+    JS_CFUNC_MAGIC_DEF("shift", 0, js_array_method, 2),
+};
+```
+
+## ArrayBuffer and Typed Arrays
+
+### Zero-Copy Buffers
+
+Share memory between C and JavaScript:
+
+```c
+// Allocate buffer outside QuickJS
+uint8_t *buffer = malloc(1024 * 1024);  // 1 MB
+
+// Wrap in ArrayBuffer (QuickJS takes ownership)
+JSValue ab = JS_NewArrayBuffer(ctx, buffer, 1024 * 1024,
+                               free,  // free_func
+                               NULL,  // opaque
+                               false);  // is_shared
+
+// JavaScript can now access buffer with zero copy
+```
+
+Signature:
+```c
+typedef void JSFreeArrayBufferDataFunc(JSRuntime *rt, void *opaque, void *ptr);
+
+JS_EXTERN JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
+                                    JSFreeArrayBufferDataFunc *free_func,
+                                    void *opaque, bool is_shared);
+```
+
+### Direct Buffer Access
+
+Access buffers without copying:
+
+```c
+size_t size;
+uint8_t *data = JS_GetArrayBuffer(ctx, &size, arraybuffer_val);
+
+if (data) {
+    // Process data directly
+    for (size_t i = 0; i < size; i++) {
+        data[i] = /* ... */;
+    }
+}
+```
+
+Signature:
+```c
+JS_EXTERN uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize,
+                                     JSValueConst obj);
+```
+
+## Interrupt Handler
+
+### Timeout Implementation
+
+```c
+typedef struct {
+    int64_t start_time;
+    int64_t timeout_ms;
+} TimeoutData;
+
+static int64_t get_time_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static int interrupt_handler(JSRuntime *rt, void *opaque)
+{
+    TimeoutData *data = opaque;
+    int64_t now = get_time_ms();
+    
+    // Return non-zero to interrupt execution
+    return (now - data->start_time) > data->timeout_ms;
+}
+
+TimeoutData timeout_data = {
+    .start_time = get_time_ms(),
+    .timeout_ms = 5000,  // 5 second timeout
+};
+
+JS_SetInterruptHandler(rt, interrupt_handler, &timeout_data);
+```
+
+Signature:
+```c
+typedef int JSInterruptHandler(JSRuntime *rt, void *opaque);
+JS_EXTERN void JS_SetInterruptHandler(JSRuntime *rt,
+                                      JSInterruptHandler *cb, void *opaque);
+```
+
+<Note>
+The interrupt handler is called periodically during execution. Keep it fast!
+</Note>
+
+## Module Loading
+
+### Optimize Module Resolution
+
+Cache module loading to avoid repeated file I/O:
+
+```c
+typedef struct {
+    // Cache of loaded modules
+    // module_name -> JSModuleDef
+} ModuleCache;
+
+static JSModuleDef *cached_module_loader(JSContext *ctx,
+                                         const char *module_name,
+                                         void *opaque,
+                                         JSValueConst attributes)
+{
+    ModuleCache *cache = opaque;
+    
+    // Check cache first
+    JSModuleDef *m = cache_lookup(cache, module_name);
+    if (m)
+        return m;
+    
+    // Load and cache
+    m = load_module(ctx, module_name);
+    cache_store(cache, module_name, m);
+    return m;
+}
+```
+
+## Profiling
+
+### Enable Bytecode Dumps
+
+```c
+// Dump bytecode to understand execution
+JS_SetDumpFlags(rt, JS_DUMP_BYTECODE_FINAL);
+```
+
+Dump flags:
+```c
+#define JS_DUMP_BYTECODE_FINAL   0x01  // final bytecode
+#define JS_DUMP_BYTECODE_STEP    0x80  // executed bytecode
+#define JS_DUMP_GC              0x400  // GC events
+```
+
+### Measure Execution Time
+
+```c
+#include <time.h>
+
+static int64_t get_time_us(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+int64_t start = get_time_us();
+JSValue result = JS_Eval(ctx, code, len, "bench.js", JS_EVAL_TYPE_GLOBAL);
+int64_t elapsed = get_time_us() - start;
+
+printf("Execution time: %lld μs\n", elapsed);
+```
+
+## JavaScript-Level Optimizations
+
+While this guide focuses on C API, remember these JavaScript best practices:
+
+1. **Avoid `eval()` and `new Function()`** - they prevent JIT optimization
+2. **Use typed arrays** for numeric data instead of regular arrays
+3. **Minimize property access** in tight loops
+4. **Prefer `const` and `let`** over `var`
+5. **Use strict mode** (`"use strict"`)
+
+## Benchmarking
+
+Example benchmark harness:
+
+```c
+#include <quickjs.h>
+#include <time.h>
+
+int main(void) {
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    
+    const char *code = "/* your code */";
+    
+    // Warmup
+    for (int i = 0; i < 10; i++) {
+        JSValue v = JS_Eval(ctx, code, strlen(code), "<bench>", JS_EVAL_TYPE_GLOBAL);
+        JS_FreeValue(ctx, v);
+    }
+    
+    // Benchmark
+    int64_t start = get_time_us();
+    const int iterations = 1000;
+    
+    for (int i = 0; i < iterations; i++) {
+        JSValue v = JS_Eval(ctx, code, strlen(code), "<bench>", JS_EVAL_TYPE_GLOBAL);
+        JS_FreeValue(ctx, v);
+    }
+    
+    int64_t elapsed = get_time_us() - start;
+    printf("Average: %.2f μs/iteration\n", (double)elapsed / iterations);
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+## Next Steps
+
+- [Memory Management](/advanced/memory-management) - Deep dive into allocation strategies
+- [Native Modules](/advanced/native-modules) - Optimize C module performance
+- [Workers](/advanced/workers) - Parallelize with worker threads

@@ -1,0 +1,323 @@
+---
+title: Reference Counting
+description: Memory management functions for JavaScript values
+---
+
+# Reference Counting
+
+QuickJS uses reference counting for memory management of JavaScript values. Understanding and correctly using these functions is critical to prevent memory leaks and use-after-free bugs.
+
+## Overview
+
+`JSValue` represents a JavaScript value which can be a primitive type or an object. Values with reference counts (objects, strings, etc.) must be explicitly managed:
+
+- **Increment** the reference count when you want to keep a value: `JS_DupValue()`
+- **Decrement** the reference count when done with a value: `JS_FreeValue()`
+
+Primitive values like numbers, booleans, null, and undefined don't have reference counts and don't need to be freed, but calling `JS_FreeValue()` on them is safe and does nothing.
+
+## Reference Counting Rules
+
+The QuickJS API follows these conventions:
+
+### Function Parameters
+
+- **`JSValue` parameter**: Function takes ownership; caller must NOT call `JS_FreeValue()`
+- **`JSValueConst` parameter**: Function does NOT take ownership; caller MUST call `JS_FreeValue()` later
+
+### Return Values
+
+- **Function returning `JSValue`**: Transfers ownership to caller; caller MUST call `JS_FreeValue()`
+- **Function returning `JSValueConst`**: Does NOT transfer ownership; caller must NOT call `JS_FreeValue()`
+
+## Core Functions
+
+### JS_FreeValue
+
+Decrements the reference count of a value and frees it if the count reaches zero.
+
+```c
+JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `v` - Value to free
+
+**Example:**
+```c
+JSValue str = JS_NewString(ctx, "hello");
+// ... use str ...
+JS_FreeValue(ctx, str);
+```
+
+**Note:** It is safe to call this on values without reference counts (numbers, booleans, etc.). It is NOT safe to call this on uninitialized values.
+
+### JS_FreeValueRT
+
+Decrements the reference count using the runtime instead of a context.
+
+```c
+JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
+```
+
+**Parameters:**
+- `rt` - JavaScript runtime
+- `v` - Value to free
+
+**Use Case:** Used in finalizers and other situations where you have the runtime but not a context.
+
+**Example:**
+```c
+static void js_point_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSPointData *s = JS_GetOpaque(val, js_point_class_id);
+    js_free_rt(rt, s);
+}
+```
+
+### JS_DupValue
+
+Increments the reference count of a value.
+
+```c
+JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `v` - Value to duplicate
+
+**Returns:** The same value with incremented reference count
+
+**Example:**
+```c
+JSValue stored_value = JS_DupValue(ctx, input_value);
+// Now you own a reference and must free it later
+JS_FreeValue(ctx, stored_value);
+```
+
+### JS_DupValueRT
+
+Increments the reference count using the runtime.
+
+```c
+JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
+```
+
+**Parameters:**
+- `rt` - JavaScript runtime
+- `v` - Value to duplicate
+
+**Returns:** The same value with incremented reference count
+
+## Common Patterns
+
+### Creating and Freeing Values
+
+```c
+JSValue val = JS_NewString(ctx, "test");
+if (JS_IsException(val))
+    return JS_EXCEPTION;
+// ... use val ...
+JS_FreeValue(ctx, val);
+```
+
+### Passing Values to Functions
+
+When a function takes `JSValue` (not `JSValueConst`), it takes ownership:
+
+```c
+JSValue val = JS_NewInt32(ctx, 42);
+JS_SetPropertyStr(ctx, obj, "count", val);
+// Do NOT free val - JS_SetPropertyStr took ownership
+```
+
+When a function takes `JSValueConst`, it does NOT take ownership:
+
+```c
+JSValue val = JS_NewInt32(ctx, 42);
+int result = JS_ToInt32(ctx, &n, val);
+// MUST free val - JS_ToInt32 didn't take ownership
+JS_FreeValue(ctx, val);
+```
+
+### Returning Values from C Functions
+
+C functions that return `JSValue` must return a newly allocated value:
+
+```c
+static JSValue js_point_get_xy(JSContext *ctx, JSValue this_val, int magic)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    if (magic == 0)
+        return JS_NewInt32(ctx, s->x);  // Returns new value
+    else
+        return JS_NewInt32(ctx, s->y);  // Returns new value
+}
+```
+
+### Storing Values
+
+When storing a value in a data structure, duplicate it:
+
+```c
+typedef struct {
+    JSValue callback;
+} MyData;
+
+// Storing the value
+MyData *data = malloc(sizeof(MyData));
+data->callback = JS_DupValue(ctx, callback_arg);
+
+// Later, when cleaning up
+JS_FreeValue(ctx, data->callback);
+free(data);
+```
+
+### Error Handling
+
+When an error occurs, free any values you've created:
+
+```c
+JSValue obj = JS_NewObject(ctx);
+if (JS_IsException(obj))
+    return JS_EXCEPTION;
+
+JSValue val = JS_NewString(ctx, "test");
+if (JS_IsException(val)) {
+    JS_FreeValue(ctx, obj);  // Clean up obj before returning
+    return JS_EXCEPTION;
+}
+
+if (JS_SetPropertyStr(ctx, obj, "name", val) < 0) {
+    // val was freed by JS_SetPropertyStr (it takes ownership)
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
+}
+
+return obj;
+```
+
+### Using goto for Cleanup
+
+A common pattern for complex initialization:
+
+```c
+static JSValue js_point_ctor(JSContext *ctx, JSValue new_target,
+                             int argc, JSValue *argv)
+{
+    JSPointData *s;
+    JSValue obj = JS_UNDEFINED;
+    JSValue proto;
+
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s)
+        return JS_EXCEPTION;
+    
+    if (JS_ToInt32(ctx, &s->x, argv[0]))
+        goto fail;
+    if (JS_ToInt32(ctx, &s->y, argv[1]))
+        goto fail;
+    
+    proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto))
+        goto fail;
+    
+    obj = JS_NewObjectProtoClass(ctx, proto, js_point_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj))
+        goto fail;
+    
+    JS_SetOpaque(obj, s);
+    return obj;
+
+fail:
+    js_free(ctx, s);
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
+}
+```
+
+## Reference Count Checks
+
+### JS_VALUE_HAS_REF_COUNT
+
+Checks if a value has a reference count.
+
+```c
+#define JS_VALUE_HAS_REF_COUNT(v) ((unsigned)JS_VALUE_GET_TAG(v) >= (unsigned)JS_TAG_FIRST)
+```
+
+**Example:**
+```c
+if (JS_VALUE_HAS_REF_COUNT(val)) {
+    // Value has a reference count
+}
+```
+
+## Debugging Reference Counting Issues
+
+QuickJS provides dump flags to help debug memory issues:
+
+```c
+JS_SetDumpFlags(rt, JS_DUMP_LEAKS);        // Dump leaked objects
+JS_SetDumpFlags(rt, JS_DUMP_FREE);         // Dump every object free
+JS_SetDumpFlags(rt, JS_DUMP_GC_FREE);      // Dump objects freed by GC
+```
+
+Enable these before `JS_FreeRuntime()` to see what wasn't properly freed.
+
+## Common Mistakes
+
+### Double Free
+
+```c
+// WRONG - double free
+JSValue val = JS_NewString(ctx, "test");
+JS_SetPropertyStr(ctx, obj, "name", val);
+JS_FreeValue(ctx, val);  // ERROR: JS_SetPropertyStr took ownership
+```
+
+### Memory Leak
+
+```c
+// WRONG - memory leak
+JSValue val = JS_GetPropertyStr(ctx, obj, "name");
+// ... use val ...
+// ERROR: Forgot to call JS_FreeValue(ctx, val)
+```
+
+### Using After Free
+
+```c
+// WRONG - use after free
+JSValue val = JS_NewString(ctx, "test");
+JS_FreeValue(ctx, val);
+JS_SetPropertyStr(ctx, obj, "name", val);  // ERROR: val was already freed
+```
+
+### Not Duplicating Stored Values
+
+```c
+// WRONG - storing without duplicating
+struct MyData {
+    JSValue callback;
+};
+
+MyData *data = malloc(sizeof(MyData));
+data->callback = callback_arg;  // ERROR: Should use JS_DupValue
+// Later when callback_arg is freed, data->callback becomes invalid
+```
+
+## Best Practices
+
+1. **Always match creation with destruction**: Every `JS_New*` should have a corresponding `JS_FreeValue`
+2. **Check function signatures**: `JSValue` parameters take ownership, `JSValueConst` don't
+3. **Duplicate when storing**: Use `JS_DupValue()` when storing a value in a data structure
+4. **Use goto for cleanup**: In complex functions, use goto to ensure proper cleanup on error
+5. **Free in reverse order**: When freeing multiple values, free them in reverse order of creation
+6. **Check for exceptions**: Always check return values for `JS_EXCEPTION` before using them
+7. **Use the build-time checker**: Compile with `-DJS_CHECK_JSVALUE` during development to catch type mismatches

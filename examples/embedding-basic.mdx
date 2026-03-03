@@ -1,0 +1,101 @@
+---
+title: Embedding QuickJS
+description: Learn how to embed QuickJS in a C application
+---
+
+# Embedding QuickJS in C
+
+This tutorial demonstrates how to compile JavaScript code and embed it in a standalone C executable.
+
+<Steps>
+
+<Step title="Create a JavaScript file">
+
+First, create a simple JavaScript file `hello.js`:
+
+```javascript
+console.log("Hello World");
+```
+
+</Step>
+
+<Step title="Compile to C code">
+
+Use `qjsc` to compile the JavaScript file into C code:
+
+```bash
+qjsc -e -o hello.c hello.js
+```
+
+The `-e` flag tells `qjsc` to generate a `main()` function and embed the bytecode in the C file.
+
+This generates `hello.c` containing:
+- Compiled JavaScript bytecode as a C array
+- A `main()` function that initializes QuickJS and executes the bytecode
+
+</Step>
+
+<Step title="Compile the C executable">
+
+Compile the generated C code with the QuickJS library:
+
+```bash
+cc hello.c dtoa.c libregexp.c libunicode.c quickjs.c quickjs-libc.c -I. -o hello
+```
+
+**Required source files:**
+- `hello.c` - Your generated code
+- `dtoa.c` - Double-to-ASCII conversion
+- `libregexp.c` - Regular expression library
+- `libunicode.c` - Unicode support
+- `quickjs.c` - Core QuickJS engine
+- `quickjs-libc.c` - Standard library
+
+</Step>
+
+<Step title="Run the executable">
+
+Execute the standalone binary:
+
+```bash
+./hello
+```
+
+**Expected output:**
+
+```
+Hello World
+```
+
+The resulting binary is completely self-contained and includes the QuickJS runtime.
+
+</Step>
+
+</Steps>
+
+## Alternative: Create Standalone Executables with qjs
+
+QuickJS also provides a simpler method to create standalone executables:
+
+```bash
+qjs -c hello.js -o hello --exe qjs
+```
+
+This bundles the JavaScript file directly into a copy of the `qjs` executable without requiring manual C compilation.
+
+## Compiler Options
+
+Useful `qjsc` options:
+
+- `-e` - Output main() and bytecode in C file
+- `-b` - Output raw bytecode instead of C code
+- `-o output` - Set output filename
+- `-n name` - Set script name (used in stack traces)
+- `-s` - Strip source code (use twice to strip debug info)
+- `-S n` - Set maximum stack size in bytes (default: 262144)
+
+## Next Steps
+
+- Learn about [native C functions](./native-functions)
+- Explore [bytecode compilation](./bytecode-compilation)
+- Work with [JavaScript modules](./modules)

@@ -1,0 +1,335 @@
+---
+title: Memory Management
+description: Functions for managing runtime memory limits and custom allocators
+---
+
+# Memory Management
+
+QuickJS provides flexible memory management options including memory limits and custom allocators.
+
+## JS_SetMemoryLimit
+
+Sets a memory allocation limit for the runtime.
+
+```c
+void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to configure.
+</ParamField>
+
+<ParamField path="limit" type="size_t" required>
+  Maximum number of bytes the runtime can allocate. Use `0` to disable the memory limit.
+</ParamField>
+
+### Description
+
+Sets a hard limit on memory allocation for the runtime. When the limit is reached:
+- Further allocations will fail
+- JavaScript code will throw out-of-memory errors
+- The runtime remains in a valid state
+
+This is essential for:
+- Preventing runaway scripts from consuming all system memory
+- Running untrusted code safely
+- Implementing resource quotas in multi-tenant systems
+- Ensuring predictable memory usage
+
+<Note>
+Setting the limit to `0` disables memory limiting. The runtime will be able to allocate memory up to system limits.
+</Note>
+
+### Example
+
+```c
+#include <quickjs.h>
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Set a 10 MB memory limit
+    JS_SetMemoryLimit(rt, 10 * 1024 * 1024);
+    
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // This script will fail if it tries to allocate > 10 MB
+    const char *code = 
+        "let arr = [];\n"
+        "for (let i = 0; i < 1000000; i++) {\n"
+        "  arr.push(new Array(1000));\n"  // Will hit memory limit
+        "}";
+    
+    JSValue result = JS_Eval(ctx, code, strlen(code), "<input>", 
+                             JS_EVAL_TYPE_GLOBAL);
+    
+    if (JS_IsException(result)) {
+        // Handle out-of-memory error
+        JSValue exception = JS_GetException(ctx);
+        const char *error = JS_ToCString(ctx, exception);
+        printf("Error: %s\n", error);  // "out of memory"
+        JS_FreeCString(ctx, error);
+        JS_FreeValue(ctx, exception);
+    }
+    
+    JS_FreeValue(ctx, result);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+### Monitoring Memory Usage
+
+```c
+#include <quickjs.h>
+
+typedef struct {
+    int64_t malloc_size;
+    int64_t malloc_limit;
+    int64_t memory_used_size;
+} JSMemoryUsage;
+
+void print_memory_usage(JSRuntime *rt) {
+    JSMemoryUsage stats;
+    JS_ComputeMemoryUsage(rt, &stats);
+    
+    printf("Memory used: %lld / %lld bytes\n",
+           (long long)stats.malloc_size,
+           (long long)stats.malloc_limit);
+}
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    JS_SetMemoryLimit(rt, 50 * 1024 * 1024);  // 50 MB limit
+    
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // Check memory before running script
+    print_memory_usage(rt);
+    
+    JS_Eval(ctx, "let x = new Array(10000);", 26, "<input>",
+            JS_EVAL_TYPE_GLOBAL);
+    
+    // Check memory after running script
+    print_memory_usage(rt);
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+### Dynamic Limits
+
+```c
+// Adjust memory limit based on available system memory
+#include <sys/sysinfo.h>
+
+void set_adaptive_memory_limit(JSRuntime *rt) {
+    struct sysinfo info;
+    sysinfo(&info);
+    
+    // Use 25% of available RAM
+    size_t limit = info.freeram / 4;
+    JS_SetMemoryLimit(rt, limit);
+    
+    printf("Set memory limit to %zu MB\n", limit / 1024 / 1024);
+}
+```
+
+---
+
+## Custom Allocators
+
+For advanced use cases, you can provide custom memory allocators when creating a runtime with `JS_NewRuntime2()`.
+
+### JSMallocFunctions Structure
+
+```c
+typedef struct JSMallocFunctions {
+    void *(*js_calloc)(void *opaque, size_t count, size_t size);
+    void *(*js_malloc)(void *opaque, size_t size);
+    void (*js_free)(void *opaque, void *ptr);
+    void *(*js_realloc)(void *opaque, void *ptr, size_t size);
+    size_t (*js_malloc_usable_size)(const void *ptr);
+} JSMallocFunctions;
+```
+
+### Allocator Functions
+
+<ParamField path="js_malloc" type="void *(*)(void *opaque, size_t size)" required>
+  Allocates `size` bytes. Returns pointer to allocated memory or `NULL` on failure.
+</ParamField>
+
+<ParamField path="js_calloc" type="void *(*)(void *opaque, size_t count, size_t size)" required>
+  Allocates memory for an array of `count` elements of `size` bytes each, initialized to zero.
+</ParamField>
+
+<ParamField path="js_free" type="void (*)(void *opaque, void *ptr)" required>
+  Frees previously allocated memory.
+</ParamField>
+
+<ParamField path="js_realloc" type="void *(*)(void *opaque, void *ptr, size_t size)" required>
+  Resizes the memory block pointed to by `ptr` to `size` bytes.
+</ParamField>
+
+<ParamField path="js_malloc_usable_size" type="size_t (*)(const void *ptr)" required>
+  Returns the usable size of the allocated memory block. Return `0` if not supported.
+</ParamField>
+
+### Example: Tracking Allocator
+
+```c
+#include <quickjs.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+typedef struct {
+    size_t total_allocated;
+    size_t peak_allocated;
+    size_t allocation_count;
+    size_t free_count;
+} AllocStats;
+
+static void *tracked_malloc(void *opaque, size_t size) {
+    AllocStats *stats = opaque;
+    void *ptr = malloc(size + sizeof(size_t));
+    
+    if (ptr) {
+        *(size_t *)ptr = size;
+        stats->total_allocated += size;
+        stats->allocation_count++;
+        
+        if (stats->total_allocated > stats->peak_allocated) {
+            stats->peak_allocated = stats->total_allocated;
+        }
+        
+        return (char *)ptr + sizeof(size_t);
+    }
+    return NULL;
+}
+
+static void tracked_free(void *opaque, void *ptr) {
+    if (!ptr) return;
+    
+    AllocStats *stats = opaque;
+    void *real_ptr = (char *)ptr - sizeof(size_t);
+    size_t size = *(size_t *)real_ptr;
+    
+    stats->total_allocated -= size;
+    stats->free_count++;
+    free(real_ptr);
+}
+
+static void *tracked_realloc(void *opaque, void *ptr, size_t size) {
+    if (!ptr) return tracked_malloc(opaque, size);
+    if (size == 0) {
+        tracked_free(opaque, ptr);
+        return NULL;
+    }
+    
+    AllocStats *stats = opaque;
+    void *real_ptr = (char *)ptr - sizeof(size_t);
+    size_t old_size = *(size_t *)real_ptr;
+    
+    void *new_ptr = realloc(real_ptr, size + sizeof(size_t));
+    if (new_ptr) {
+        *(size_t *)new_ptr = size;
+        stats->total_allocated = stats->total_allocated - old_size + size;
+        
+        if (stats->total_allocated > stats->peak_allocated) {
+            stats->peak_allocated = stats->total_allocated;
+        }
+        
+        return (char *)new_ptr + sizeof(size_t);
+    }
+    return NULL;
+}
+
+static void *tracked_calloc(void *opaque, size_t count, size_t size) {
+    size_t total = count * size;
+    void *ptr = tracked_malloc(opaque, total);
+    if (ptr) memset(ptr, 0, total);
+    return ptr;
+}
+
+static size_t tracked_malloc_usable_size(const void *ptr) {
+    return 0;  // Not implemented
+}
+
+int main() {
+    AllocStats stats = {0};
+    
+    JSMallocFunctions mf = {
+        .js_malloc = tracked_malloc,
+        .js_calloc = tracked_calloc,
+        .js_free = tracked_free,
+        .js_realloc = tracked_realloc,
+        .js_malloc_usable_size = tracked_malloc_usable_size
+    };
+    
+    JSRuntime *rt = JS_NewRuntime2(&mf, &stats);
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // Run some JavaScript
+    JS_Eval(ctx, "let arr = new Array(10000);", 26, "<input>",
+            JS_EVAL_TYPE_GLOBAL);
+    
+    printf("Allocations: %zu\n", stats.allocation_count);
+    printf("Frees: %zu\n", stats.free_count);
+    printf("Current usage: %zu bytes\n", stats.total_allocated);
+    printf("Peak usage: %zu bytes\n", stats.peak_allocated);
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    
+    printf("\nAfter cleanup:\n");
+    printf("Leaked: %zu bytes\n", stats.total_allocated);
+    
+    return 0;
+}
+```
+
+### Example: Pool Allocator
+
+```c
+// Simple pool allocator for small objects
+#define POOL_SIZE 1024
+#define MAX_SMALL_ALLOC 64
+
+typedef struct {
+    char pool[POOL_SIZE];
+    size_t offset;
+    size_t small_allocs;
+} PoolAllocator;
+
+static void *pool_malloc(void *opaque, size_t size) {
+    PoolAllocator *pool = opaque;
+    
+    // Use pool for small allocations
+    if (size <= MAX_SMALL_ALLOC && 
+        pool->offset + size <= POOL_SIZE) {
+        void *ptr = &pool->pool[pool->offset];
+        pool->offset += size;
+        pool->small_allocs++;
+        return ptr;
+    }
+    
+    // Fall back to malloc for large allocations
+    return malloc(size);
+}
+
+// Note: This is a simplified example. A real pool allocator
+// would need proper tracking to distinguish pool vs malloc'd pointers
+```
+
+<Warning>
+When implementing custom allocators:
+- All functions must be thread-safe if using multiple runtimes
+- `js_malloc_usable_size` is optional - return 0 if not implemented
+- Ensure proper alignment of allocated memory
+- Handle `NULL` parameters correctly in `js_free` and `js_realloc`
+</Warning>

@@ -1,0 +1,97 @@
+---
+title: Standard Library Overview
+description: Introduction to the QuickJS-ng standard library and its modules
+---
+
+The QuickJS-ng standard library provides essential functionality for file I/O, operating system interactions, and data serialization. It is implemented in `quickjs-libc.c` and is available as part of the `qjs` executable.
+
+<Note>
+The standard library is **not** part of the core QuickJS engine. It is provided separately as a C library that can be integrated into applications.
+</Note>
+
+## Architecture
+
+The standard library consists of three main modules:
+
+<CardGroup cols={3}>
+  <Card title="qjs:std" icon="book" href="/stdlib/std-module">
+    Core utilities including file I/O, environment variables, and script evaluation
+  </Card>
+  <Card title="qjs:os" icon="server" href="/stdlib/os-module">
+    Operating system functions for process management, signals, timers, and workers
+  </Card>
+  <Card title="qjs:bjson" icon="binary" href="/stdlib/bjson-module">
+    Binary JSON serialization using QuickJS internal format
+  </Card>
+</CardGroup>
+
+## Module Imports
+
+To use the standard library modules, import them using the `qjs:` protocol:
+
+```javascript
+import * as std from 'qjs:std';
+import * as os from 'qjs:os';
+import * as bjson from 'qjs:bjson';
+```
+
+## Global Helpers
+
+When using the `qjs` executable, several global functions and variables are automatically available without imports. See [Global Functions](/stdlib/globals) for details.
+
+## Platform Support
+
+The standard library supports multiple platforms:
+
+- **Linux** - Full support for all features
+- **macOS** - Full support for all features
+- **Windows** - Full support with some API differences
+- **WASI** - Limited support (no `popen`, `tmpfile`, worker threads)
+
+<Warning>
+Some functions like `os.Worker`, `os.mkstemp`, and `os.mkdtemp` are not available on Windows and WASI platforms.
+</Warning>
+
+## Error Handling
+
+Most OS-level functions follow consistent error handling patterns:
+
+- Return `0` on success
+- Return `-errno` on failure (negative error code)
+- Use `std.Error` constants to check specific errors
+- Use `std.strerror(errno)` to get human-readable error messages
+
+```javascript
+import * as std from 'qjs:std';
+import * as os from 'qjs:os';
+
+const fd = os.open('file.txt', os.O_RDONLY);
+if (fd < 0) {
+  const errno = -fd;
+  if (errno === std.Error.ENOENT) {
+    console.log('File not found');
+  } else {
+    console.log('Error:', std.strerror(errno));
+  }
+}
+```
+
+## Thread Safety
+
+The standard library supports multi-threading through `os.Worker`:
+
+- Workers run in separate threads with isolated contexts
+- Communication happens via message passing (similar to Web Workers)
+- `SharedArrayBuffer` can be shared between workers
+- Signal handlers can only be set in the main thread
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Global Functions" icon="globe" href="/stdlib/globals">
+    Learn about globally available functions in the qjs executable
+  </Card>
+  <Card title="Standard Module" icon="book-open" href="/stdlib/std-module">
+    Explore file I/O and utility functions
+  </Card>
+</CardGroup>

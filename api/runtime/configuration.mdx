@@ -1,0 +1,262 @@
+---
+title: Runtime Configuration
+description: Functions for configuring runtime properties and opaque data
+---
+
+# Runtime Configuration
+
+These functions allow you to configure runtime properties and attach custom data to a runtime instance.
+
+## JS_SetRuntimeInfo
+
+Sets an informational string for the runtime.
+
+```c
+void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to configure.
+</ParamField>
+
+<ParamField path="info" type="const char *" required>
+  Informational string describing the runtime. The pointer must remain valid for the lifetime of the runtime.
+</ParamField>
+
+### Description
+
+Attaches a descriptive string to the runtime for debugging or identification purposes. This is useful when working with multiple runtimes to distinguish them in logs or debugging output.
+
+<Warning>
+The `info` string is not copied - the pointer is stored directly. You must ensure the string remains valid for the entire lifetime of the runtime. The string should typically be a string literal or statically allocated.
+</Warning>
+
+### Example
+
+```c
+#include <quickjs.h>
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Set runtime info (must be a persistent string)
+    JS_SetRuntimeInfo(rt, "Main Application Runtime");
+    
+    // The info string will be used in debug output
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // ... use runtime ...
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+```c
+// Multiple runtimes with different info strings
+JSRuntime *worker_rt = JS_NewRuntime();
+JS_SetRuntimeInfo(worker_rt, "Worker Runtime");
+
+JSRuntime *main_rt = JS_NewRuntime();
+JS_SetRuntimeInfo(main_rt, "Main Runtime");
+```
+
+---
+
+## JS_SetRuntimeOpaque
+
+Attaches custom user data to a runtime.
+
+```c
+void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to attach data to.
+</ParamField>
+
+<ParamField path="opaque" type="void *">
+  Pointer to user-defined data. Can be `NULL`.
+</ParamField>
+
+### Description
+
+Stores a user-defined pointer in the runtime. This is useful for:
+- Associating application-specific data with the runtime
+- Passing context information to C functions
+- Implementing runtime-specific callbacks
+- Storing configuration or state data
+
+The runtime does not manage this pointer - you are responsible for its lifecycle.
+
+### Example
+
+```c
+#include <quickjs.h>
+#include <stdlib.h>
+
+typedef struct {
+    int request_count;
+    char *app_name;
+    void *user_data;
+} AppContext;
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Create and attach custom context
+    AppContext *app_ctx = malloc(sizeof(AppContext));
+    app_ctx->request_count = 0;
+    app_ctx->app_name = strdup("MyApp");
+    app_ctx->user_data = NULL;
+    
+    JS_SetRuntimeOpaque(rt, app_ctx);
+    
+    // Now you can retrieve it from C functions
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // ... use runtime ...
+    
+    // Clean up opaque data before freeing runtime
+    AppContext *ctx_to_free = JS_GetRuntimeOpaque(rt);
+    if (ctx_to_free) {
+        free(ctx_to_free->app_name);
+        free(ctx_to_free);
+    }
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+```c
+// Accessing opaque data from a C function
+static JSValue js_get_request_count(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv) {
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    AppContext *app_ctx = JS_GetRuntimeOpaque(rt);
+    
+    if (app_ctx) {
+        return JS_NewInt32(ctx, app_ctx->request_count);
+    }
+    return JS_NewInt32(ctx, 0);
+}
+```
+
+---
+
+## JS_GetRuntimeOpaque
+
+Retrieves custom user data from a runtime.
+
+```c
+void *JS_GetRuntimeOpaque(JSRuntime *rt);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to retrieve data from.
+</ParamField>
+
+### Returns
+
+<ResponseField name="opaque" type="void *">
+  The user-defined pointer previously set with `JS_SetRuntimeOpaque()`, or `NULL` if none was set.
+</ResponseField>
+
+### Description
+
+Retrieves the opaque pointer associated with a runtime. This is typically used in C functions to access application-specific context or state.
+
+### Example
+
+```c
+#include <quickjs.h>
+
+typedef struct {
+    int max_iterations;
+    bool debug_mode;
+} Config;
+
+static JSValue js_run_task(JSContext *ctx, JSValueConst this_val,
+                           int argc, JSValueConst *argv) {
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    Config *config = JS_GetRuntimeOpaque(rt);
+    
+    if (!config) {
+        return JS_ThrowInternalError(ctx, "No runtime configuration");
+    }
+    
+    if (config->debug_mode) {
+        printf("Running task with max_iterations=%d\n", config->max_iterations);
+    }
+    
+    // ... perform task ...
+    
+    return JS_UNDEFINED;
+}
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    
+    Config config = { .max_iterations = 1000, .debug_mode = true };
+    JS_SetRuntimeOpaque(rt, &config);
+    
+    // Register the C function
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "runTask",
+                      JS_NewCFunction(ctx, js_run_task, "runTask", 0));
+    JS_FreeValue(ctx, global);
+    
+    // JavaScript can now call runTask()
+    JS_Eval(ctx, "runTask();", 10, "<input>", JS_EVAL_TYPE_GLOBAL);
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+### Common Use Cases
+
+```c
+// 1. Storing application state
+typedef struct {
+    sqlite3 *db;
+    FILE *log_file;
+    int user_id;
+} AppState;
+
+AppState state;
+JS_SetRuntimeOpaque(rt, &state);
+
+// 2. Passing callbacks
+typedef struct {
+    void (*on_error)(const char *msg);
+    void (*on_complete)(void);
+} Callbacks;
+
+Callbacks callbacks = {
+    .on_error = handle_error,
+    .on_complete = handle_complete
+};
+JS_SetRuntimeOpaque(rt, &callbacks);
+
+// 3. Configuration management
+typedef struct {
+    const char *data_dir;
+    size_t max_memory;
+    bool enable_networking;
+} RuntimeConfig;
+
+RuntimeConfig config;
+JS_SetRuntimeOpaque(rt, &config);
+```

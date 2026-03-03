@@ -1,0 +1,127 @@
+---
+title: Supported Platforms
+description: Operating systems and platforms supported by QuickJS-ng
+---
+
+QuickJS-ng supports a wide range of operating systems and platforms. The following table lists all supported platforms with their version requirements and testing status.
+
+## Platform Support Matrix
+
+| System | Supported Versions | Notes |
+|--------|-------------------|-------|
+| GNU/Linux | All versions | glibc and musl are supported |
+| macOS | macOS >= 11 | Currently supported macOS releases |
+| Windows | >= Windows 7* | VS >= 2022 and Clang are supported; requires `<stdatomic.h>` |
+| FreeBSD | All versions | Limited testing |
+| OpenBSD | All versions | Limited testing |
+| NetBSD | All versions | Limited testing |
+| Android | NDK >= 26.0.10792818 | Limited testing |
+| iOS | All versions | Limited testing |
+| tvOS | All versions | Limited testing |
+| watchOS | All versions | Limited testing |
+| MinGW | MinGW-w64 | Full support |
+| WASI | WebAssembly System Interface | Supported with emulated process clocks and signals |
+| Emscripten | Latest | WebAssembly compilation supported |
+| SunOS | All versions | Some compiler flags may differ |
+
+<Note>
+  *Windows 7 is EOL and only supported in this project as long as it doesn't interfere with its progress.
+</Note>
+
+## Compiler Support
+
+### GCC
+- Version 11 or later recommended
+- C11 standard with GNU extensions
+- On macOS with GCC 11+, `-Wno-maybe-uninitialized` flag is required
+
+### Clang
+- Fully supported on all platforms
+- Recommended for Windows builds
+
+### MSVC
+- Visual Studio 2022 or later
+- Requires `/experimental:c11atomics` flag
+- C11 atomics support required
+
+### MinGW
+- MinGW-w64 toolchain
+- Full C11 support required
+
+## Platform-Specific Notes
+
+### Windows
+
+<Tabs>
+  <Tab title="MSVC">
+    - Requires Visual Studio 2022 or later
+    - C11 atomics support required (`<stdatomic.h>`)
+    - Default stack size set to 8MB (vs 1MB default)
+    - Use `/experimental:c11atomics` compiler flag
+  </Tab>
+  <Tab title="MinGW">
+    - MinGW-w64 toolchain required
+    - Default stack size set to 8MB (vs 2MB default)
+    - Static linking supported
+  </Tab>
+  <Tab title="Clang">
+    - Fully supported alternative to MSVC
+    - Better C11 standard compliance
+  </Tab>
+</Tabs>
+
+### WASI (WebAssembly System Interface)
+
+```cmake
+if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+    add_compile_definitions(
+        _WASI_EMULATED_PROCESS_CLOCKS
+        _WASI_EMULATED_SIGNAL
+    )
+    add_link_options(
+        -lwasi-emulated-process-clocks
+        -lwasi-emulated-signal
+    )
+endif()
+```
+
+WASI builds require emulated process clocks and signal support.
+
+### Emscripten
+
+QuickJS-ng can be compiled to WebAssembly using Emscripten:
+
+```bash
+emcmake cmake -B build
+cmake --build build
+```
+
+The Emscripten build produces a WebAssembly module with:
+- 2MB stack size (instead of default 16KB)
+- ES6 module export
+- Exported runtime methods: `ccall`, `cwrap`
+
+### Mobile Platforms
+
+#### iOS / tvOS / watchOS
+- Limited testing
+- No CLI tools installed on these platforms
+- Library-only builds
+- Platform-specific preprocessor definitions (`_TVOS`, `_WATCHOS`)
+
+#### Android
+- NDK version 26.0.10792818 or later required
+- Limited testing
+- Full library and CLI support
+
+## Adding New Platforms
+
+If you've successfully built QuickJS-ng on a platform not listed here, please open a pull request to add it to the documentation!
+
+## Unsupported Features by Platform
+
+| Feature | Limited Platforms |
+|---------|------------------|
+| CLI tools (qjs, qjsc) | Not installed on iOS, tvOS, watchOS |
+| Thread support | Not available on WASI |
+| Dynamic linking | Windows requires explicit symbol linking |

@@ -1,0 +1,305 @@
+---
+title: Error Types
+description: Standard JavaScript error constructors in QuickJS
+---
+
+# Error Types
+
+QuickJS provides constructor functions for all standard JavaScript error types. These functions create error objects with the appropriate prototype and can optionally throw them immediately.
+
+## Error Constructors
+
+Each error constructor creates a new error object with a formatted message.
+
+### JS_NewError
+
+Creates a generic Error object.
+
+```c
+JSValue JS_NewError(JSContext *ctx);
+```
+
+Creates an empty Error object. You typically add a message property yourself.
+
+**Example:**
+
+```c
+JSValue err = JS_NewError(ctx);
+JS_DefinePropertyValueStr(ctx, err, "message",
+    JS_NewString(ctx, "Something went wrong"),
+    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+return JS_Throw(ctx, err);
+```
+
+### JS_NewRangeError
+
+Creates a RangeError with a formatted message.
+
+```c
+JSValue JS_NewRangeError(JSContext *ctx, const char *fmt, ...);
+```
+
+Use this for errors indicating a value is outside the acceptable range.
+
+**Example:**
+
+```c
+if (index < 0 || index >= array_length) {
+    return JS_Throw(ctx, JS_NewRangeError(ctx,
+        "Index %d is out of bounds [0, %d)", index, array_length));
+}
+```
+
+### JS_NewReferenceError
+
+Creates a ReferenceError with a formatted message.
+
+```c
+JSValue JS_NewReferenceError(JSContext *ctx, const char *fmt, ...);
+```
+
+Use this for errors related to invalid references or undefined variables.
+
+**Example:**
+
+```c
+if (!variable_exists) {
+    return JS_Throw(ctx, JS_NewReferenceError(ctx,
+        "Variable '%s' is not defined", var_name));
+}
+```
+
+### JS_NewSyntaxError
+
+Creates a SyntaxError with a formatted message.
+
+```c
+JSValue JS_NewSyntaxError(JSContext *ctx, const char *fmt, ...);
+```
+
+Use this for syntax-related errors, typically during parsing.
+
+**Example:**
+
+```c
+if (parse_failed) {
+    return JS_Throw(ctx, JS_NewSyntaxError(ctx,
+        "Unexpected token at line %d, column %d", line, col));
+}
+```
+
+### JS_NewTypeError
+
+Creates a TypeError with a formatted message.
+
+```c
+JSValue JS_NewTypeError(JSContext *ctx, const char *fmt, ...);
+```
+
+Use this for type-related errors, such as invalid argument types.
+
+**Example:**
+
+```c
+if (!JS_IsString(argv[0])) {
+    return JS_Throw(ctx, JS_NewTypeError(ctx,
+        "Expected string as first argument"));
+}
+```
+
+### JS_NewInternalError
+
+Creates an InternalError with a formatted message.
+
+```c
+JSValue JS_NewInternalError(JSContext *ctx, const char *fmt, ...);
+```
+
+Use this for internal engine errors.
+
+**Example:**
+
+```c
+if (internal_state_corrupted) {
+    return JS_Throw(ctx, JS_NewInternalError(ctx,
+        "Internal state corruption detected"));
+}
+```
+
+## Throwing Functions
+
+For convenience, QuickJS provides functions that both create and throw errors in one call. These functions always return `JS_EXCEPTION`.
+
+### JS_ThrowRangeError
+
+```c
+JSValue JS_ThrowRangeError(JSContext *ctx, const char *fmt, ...);
+```
+
+**Example:**
+
+```c
+if (value > MAX_VALUE) {
+    return JS_ThrowRangeError(ctx, "Value %d exceeds maximum %d",
+                              value, MAX_VALUE);
+}
+```
+
+### JS_ThrowReferenceError
+
+```c
+JSValue JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
+```
+
+**Example:**
+
+```c
+if (!JS_HasProperty(ctx, obj, prop_atom)) {
+    return JS_ThrowReferenceError(ctx, "Property '%s' does not exist",
+                                  prop_name);
+}
+```
+
+### JS_ThrowSyntaxError
+
+```c
+JSValue JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
+```
+
+**Example:**
+
+```c
+return JS_ThrowSyntaxError(ctx, "Invalid JSON at position %d", pos);
+```
+
+### JS_ThrowTypeError
+
+```c
+JSValue JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
+```
+
+**Example:**
+
+```c
+if (argc < 2) {
+    return JS_ThrowTypeError(ctx, "Expected 2 arguments, got %d", argc);
+}
+```
+
+### JS_ThrowInternalError
+
+```c
+JSValue JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
+```
+
+**Example:**
+
+```c
+return JS_ThrowInternalError(ctx, "Assertion failed: %s", condition);
+```
+
+## Additional Error Functions
+
+### JS_ThrowOutOfMemory
+
+Throws an out-of-memory error.
+
+```c
+JSValue JS_ThrowOutOfMemory(JSContext *ctx);
+```
+
+**Example:**
+
+```c
+void *buffer = js_malloc(ctx, size);
+if (!buffer) {
+    return JS_ThrowOutOfMemory(ctx);
+}
+```
+
+### JS_ThrowDOMException
+
+Creates and throws a DOMException with a name and message.
+
+```c
+JSValue JS_ThrowDOMException(JSContext *ctx, const char *name,
+                            const char *fmt, ...);
+```
+
+**Example:**
+
+```c
+if (operation_not_supported) {
+    return JS_ThrowDOMException(ctx, "NotSupportedError",
+        "Operation '%s' is not supported", operation_name);
+}
+```
+
+## Format Strings
+
+All error constructor and throwing functions that accept format strings support standard printf-style formatting:
+
+```c
+// Integer formatting
+JS_ThrowRangeError(ctx, "Index %d is invalid", index);
+
+// String formatting
+JS_ThrowTypeError(ctx, "Expected %s, got %s", expected_type, actual_type);
+
+// Float formatting
+JS_ThrowRangeError(ctx, "Value %.2f is out of range", value);
+
+// Multiple arguments
+JS_ThrowError(ctx, "Error at line %d, column %d: %s", line, col, message);
+```
+
+## Choosing the Right Error Type
+
+| Error Type | Use When |
+|------------|----------|
+| **Error** | Generic errors that don't fit other categories |
+| **RangeError** | A numeric value is outside the allowed range |
+| **ReferenceError** | Referencing an undefined or inaccessible variable |
+| **SyntaxError** | Parsing or compiling code fails |
+| **TypeError** | A value is not of the expected type |
+| **InternalError** | Engine internal errors or assertions fail |
+
+## Best Practices
+
+1. **Use specific error types**: Choose the most appropriate error type for the situation.
+2. **Provide context**: Include relevant values and context in error messages.
+3. **Be consistent**: Use the same error type for similar situations throughout your code.
+4. **Use throwing functions for simplicity**: `JS_ThrowTypeError()` is more concise than `JS_Throw(ctx, JS_NewTypeError())`.
+
+## Example: Comprehensive Error Handling
+
+```c
+static JSValue my_divide(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    // Check argument count
+    if (argc < 2) {
+        return JS_ThrowTypeError(ctx, "divide() requires 2 arguments");
+    }
+    
+    // Check argument types
+    if (!JS_IsNumber(argv[0]) || !JS_IsNumber(argv[1])) {
+        return JS_ThrowTypeError(ctx, "Arguments must be numbers");
+    }
+    
+    double a, b;
+    JS_ToFloat64(ctx, &a, argv[0]);
+    JS_ToFloat64(ctx, &b, argv[1]);
+    
+    // Check for division by zero
+    if (b == 0.0) {
+        return JS_ThrowRangeError(ctx, "Division by zero");
+    }
+    
+    return JS_NewFloat64(ctx, a / b);
+}
+```
+
+## See Also
+
+- [Throwing Exceptions](/api/exceptions/throwing) - Creating and throwing exceptions
+- [Catching Exceptions](/api/exceptions/catching) - Retrieving and handling exceptions

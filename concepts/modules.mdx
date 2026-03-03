@@ -1,0 +1,390 @@
+---
+title: Module system
+description: ES6 modules and native C modules in QuickJS
+---
+
+## Overview
+
+QuickJS supports both ES6 JavaScript modules and native C modules. The module system follows the ECMAScript specification and allows you to organize code into reusable components.
+
+## ES6 JavaScript modules
+
+### Module syntax
+
+QuickJS supports standard ES6 module syntax:
+
+```javascript
+// math.js - exporting module
+export function add(a, b) {
+    return a + b;
+}
+
+export function multiply(a, b) {
+    return a * b;
+}
+
+export const PI = 3.14159;
+```
+
+```javascript
+// app.js - importing module
+import { add, multiply, PI } from './math.js';
+
+console.log(add(2, 3));        // 5
+console.log(multiply(4, 5));   // 20
+console.log(PI);               // 3.14159
+```
+
+### Loading ES6 modules
+
+From the command line:
+
+```bash
+# Explicitly load as module
+qjs --module app.js
+
+# Auto-detect from import/export
+qjs app.js
+```
+
+From C code:
+
+```c
+// Evaluate as a module
+JSValue result = JS_Eval(ctx, module_code, code_len, 
+                         "app.js", JS_EVAL_TYPE_MODULE);
+
+if (JS_IsException(result)) {
+    // Handle error
+    JSValue ex = JS_GetException(ctx);
+    JS_FreeValue(ctx, ex);
+}
+
+JS_FreeValue(ctx, result);
+```
+
+### Module detection
+
+QuickJS can automatically detect if code is a module:
+
+```c
+int is_module = JS_DetectModule(source_code, code_length);
+
+int eval_flags = is_module ? JS_EVAL_TYPE_MODULE : JS_EVAL_TYPE_GLOBAL;
+JSValue result = JS_Eval(ctx, source_code, code_length, 
+                         filename, eval_flags);
+```
+
+## Native C modules
+
+Native modules allow you to expose C functionality to JavaScript.
+
+### Module structure
+
+Every native module must have an initialization function:
+
+```c
+#include <quickjs.h>
+
+// Module initialization function
+JS_MODULE_EXTERN JSModuleDef *js_init_module(JSContext *ctx, 
+                                             const char *module_name) {
+    JSModuleDef *m;
+    
+    // Create module definition
+    m = JS_NewCModule(ctx, module_name, js_module_init);
+    if (!m)
+        return NULL;
+    
+    // Add exports
+    JS_AddModuleExport(ctx, m, "myFunction");
+    JS_AddModuleExport(ctx, m, "myConstant");
+    
+    return m;
+}
+```
+
+### Implementing exports
+
+```c
+// C function to expose
+static JSValue js_my_function(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv) {
+    if (argc < 1) {
+        return JS_ThrowTypeError(ctx, "expected 1 argument");
+    }
+    
+    int32_t value;
+    if (JS_ToInt32(ctx, &value, argv[0]))
+        return JS_EXCEPTION;
+    
+    // Do something with value
+    return JS_NewInt32(ctx, value * 2);
+}
+
+// Module initialization callback
+static int js_module_init(JSContext *ctx, JSModuleDef *m) {
+    // Set function export
+    JS_SetModuleExport(ctx, m, "myFunction", 
+                       JS_NewCFunction(ctx, js_my_function, "myFunction", 1));
+    
+    // Set constant export
+    JS_SetModuleExport(ctx, m, "myConstant", JS_NewInt32(ctx, 42));
+    
+    return 0;
+}
+```
+
+### Complete example
+
+Here's a complete native module from the QuickJS examples:
+
+```c
+// fib.c - Fibonacci module
+#include <quickjs.h>
+
+// Compute fibonacci number
+static int fib(int n) {
+    if (n <= 1)
+        return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
+// JavaScript function wrapper
+static JSValue js_fib(JSContext *ctx, JSValueConst this_val,
+                     int argc, JSValueConst *argv) {
+    int32_t n;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    return JS_NewInt32(ctx, fib(n));
+}
+
+// Module initialization
+static int js_fib_init(JSContext *ctx, JSModuleDef *m) {
+    JS_SetModuleExport(ctx, m, "fib", 
+                       JS_NewCFunction(ctx, js_fib, "fib", 1));
+    return 0;
+}
+
+// Entry point
+JS_MODULE_EXTERN JSModuleDef *js_init_module(JSContext *ctx, 
+                                             const char *module_name) {
+    JSModuleDef *m = JS_NewCModule(ctx, module_name, js_fib_init);
+    if (!m)
+        return NULL;
+    JS_AddModuleExport(ctx, m, "fib");
+    return m;
+}
+```
+
+Usage from JavaScript:
+
+```javascript
+import { fib } from 'fib';
+
+console.log(fib(10));  // 55
+```
+
+## Built-in modules
+
+QuickJS includes several built-in modules:
+
+### qjs:std module
+
+```javascript
+import * as std from 'qjs:std';
+
+std.loadFile('data.txt');  // Read file
+std.exit(0);               // Exit process
+```
+
+### qjs:os module
+
+```javascript
+import * as os from 'qjs:os';
+
+os.getcwd();               // Get current directory
+os.chdir('/tmp');          // Change directory
+```
+
+### qjs:bjson module
+
+```javascript
+import * as bjson from 'qjs:bjson';
+
+const data = { x: 42 };
+const binary = bjson.write(data);
+const restored = bjson.read(binary);
+```
+
+### Initializing built-in modules
+
+From C code:
+
+```c
+#include <quickjs-libc.h>
+
+JSContext *ctx = JS_NewContext(rt);
+
+// Add standard library modules
+js_init_module_std(ctx, "qjs:std");
+js_init_module_os(ctx, "qjs:os");
+js_init_module_bjson(ctx, "qjs:bjson");
+
+// Or use helper to add globals + modules
+js_std_add_helpers(ctx, argc, argv);
+```
+
+## Module loading
+
+### Custom module loader
+
+You can implement a custom module loader:
+
+```c
+JSModuleDef *my_module_loader(JSContext *ctx, const char *module_name,
+                             void *opaque, JSValueConst attributes) {
+    // Check if it's a custom module
+    if (strcmp(module_name, "mymodule") == 0) {
+        return js_init_module_mymodule(ctx, module_name);
+    }
+    
+    // Fall back to default loader
+    return js_module_loader(ctx, module_name, opaque, attributes);
+}
+
+// Set the custom loader
+JS_SetModuleLoaderFunc(rt, NULL, my_module_loader, NULL);
+```
+
+### Default module loader
+
+The default loader provided by quickjs-libc:
+
+```c
+#include <quickjs-libc.h>
+
+// Set up default module loader (loads from filesystem)
+JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
+
+// Set import.meta handler
+JS_SetHostDefinedFunc(ctx, js_module_set_import_meta, NULL);
+```
+
+## Dynamic imports
+
+QuickJS supports dynamic `import()` expressions:
+
+```javascript
+// Static import
+import { helper } from './utils.js';
+
+// Dynamic import (returns a Promise)
+const moduleName = './plugins/' + pluginName + '.js';
+const module = await import(moduleName);
+module.init();
+```
+
+From C:
+
+```c
+// Dynamic imports work through JS_Eval
+JSValue result = JS_Eval(ctx, 
+    "import('./module.js').then(m => m.doSomething())",
+    strlen("import('./module.js').then(m => m.doSomething())"),
+    "<input>", JS_EVAL_TYPE_MODULE);
+```
+
+## Module namespaces
+
+Import entire module as namespace:
+
+```javascript
+import * as math from './math.js';
+
+console.log(math.add(1, 2));
+console.log(math.PI);
+```
+
+Default exports:
+
+```javascript
+// lib.js
+export default function() {
+    return 'default export';
+}
+
+export const helper = () => 'named export';
+
+// app.js
+import myLib, { helper } from './lib.js';
+
+console.log(myLib());     // 'default export'
+console.log(helper());    // 'named export'
+```
+
+## Module caching
+
+QuickJS caches loaded modules:
+
+```javascript
+// math.js loaded once
+import { add } from './math.js';
+import { multiply } from './math.js';  // Uses cached version
+```
+
+## Best practices
+
+<Tip>
+**Use ES6 modules for JavaScript** - They provide better tooling support and are standard JavaScript.
+</Tip>
+
+<Tip>
+**Keep native modules focused** - Each C module should have a single, well-defined purpose.
+</Tip>
+
+<Warning>
+**Always export declared names** - The names passed to `JS_AddModuleExport()` must match those in `JS_SetModuleExport()`.
+</Warning>
+
+<Info>
+Module paths are resolved relative to the current module's directory, similar to Node.js.
+</Info>
+
+## Example: Class-based module
+
+Native modules can export classes with methods:
+
+```c
+// See examples/point.c for complete example
+static JSClassID js_point_class_id;
+
+static JSValue js_point_constructor(JSContext *ctx, JSValueConst new_target,
+                                   int argc, JSValueConst *argv) {
+    // Create instance with opaque data
+    Point *p = malloc(sizeof(Point));
+    JS_ToFloat64(ctx, &p->x, argv[0]);
+    JS_ToFloat64(ctx, &p->y, argv[1]);
+    
+    JSValue obj = JS_NewObjectClass(ctx, js_point_class_id);
+    JS_SetOpaque(obj, p);
+    return obj;
+}
+
+JSModuleDef *js_init_module_point(JSContext *ctx, const char *name) {
+    // Register class
+    JS_NewClassID(&js_point_class_id);
+    JS_NewClass(rt, js_point_class_id, &js_point_class);
+    
+    // Create module with Point constructor
+    JSModuleDef *m = JS_NewCModule(ctx, name, js_point_init);
+    JS_AddModuleExport(ctx, m, "Point");
+    return m;
+}
+```
+
+## See also
+
+- [Module evaluation API](/api/evaluation/modules) - Module loading functions
+- [Native modules example](/examples/native-functions) - Complete native module tutorial
+- [Standard library](/stdlib/overview) - Built-in module reference

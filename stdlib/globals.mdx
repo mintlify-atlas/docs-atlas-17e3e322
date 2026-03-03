@@ -1,0 +1,174 @@
+---
+title: Global Functions and Variables
+description: Global functions and variables available in the qjs executable
+---
+
+When running scripts with the `qjs` executable, several global functions and variables are automatically available without requiring module imports.
+
+<Note>
+These globals are added by the `qjs` executable and are **not** available when embedding QuickJS in other applications unless explicitly configured.
+</Note>
+
+## Global Variables
+
+### `argv0`
+
+<ResponseField name="argv0" type="string">
+  The full path to the executable that is running the script.
+</ResponseField>
+
+```javascript
+console.log('Executable:', argv0);
+// Output: Executable: /usr/local/bin/qjs
+```
+
+### `scriptArgs`
+
+<ResponseField name="scriptArgs" type="string[]">
+  Command line arguments passed to the script. The first element is always the script filename.
+</ResponseField>
+
+```javascript
+// Running: qjs script.js arg1 arg2
+console.log(scriptArgs);
+// Output: ['script.js', 'arg1', 'arg2']
+```
+
+### `navigator.userAgent`
+
+<ResponseField name="navigator.userAgent" type="string">
+  Returns a string in the format `quickjs-ng/<version>`.
+</ResponseField>
+
+```javascript
+console.log(navigator.userAgent);
+// Output: quickjs-ng/0.8.0
+```
+
+## Global Functions
+
+### `print(...args)`
+
+Prints the arguments separated by spaces with a trailing newline.
+
+<ParamField path="...args" type="any">
+  Any number of arguments to print. Non-string values are converted to strings.
+</ParamField>
+
+```javascript
+print('Hello', 'World', 123);
+// Output: Hello World 123
+```
+
+### `console.log(...args)`
+
+Alias for `print()`. Behaves identically to `print()`.
+
+<ParamField path="...args" type="any">
+  Any number of arguments to print.
+</ParamField>
+
+```javascript
+console.log('Status:', 'OK');
+// Output: Status: OK
+```
+
+<Note>
+Unlike browser or Node.js environments, `console.log` in QuickJS-ng is simply an alias for `print()` and does not support advanced formatting or object inspection.
+</Note>
+
+### `gc()`
+
+Manually triggers garbage collection.
+
+<ResponseField name="return" type="undefined">
+  This function does not return a value.
+</ResponseField>
+
+```javascript
+// Create many temporary objects
+for (let i = 0; i < 1000000; i++) {
+  const obj = { value: i };
+}
+
+// Force garbage collection
+gc();
+```
+
+<Accordion title="When should I use gc()?">
+  The garbage collector runs automatically when needed. Manual invocation is useful in specific scenarios:
+  
+  - **Memory-constrained environments** - Force cleanup before starting memory-intensive operations
+  - **Testing and benchmarking** - Ensure consistent memory state between test runs
+  - **Long-running scripts** - Periodically clean up in scripts that run for extended periods
+  
+  In most cases, you should rely on automatic garbage collection.
+</Accordion>
+
+<Info>
+`gc()` is a shorthand for `std.gc()` from the `qjs:std` module.
+</Info>
+
+## Comparison with Other Environments
+
+<AccordionGroup>
+  <Accordion title="Node.js Compatibility">
+    QuickJS-ng globals differ from Node.js:
+    
+    | QuickJS-ng | Node.js | Notes |
+    |------------|---------|-------|
+    | `argv0` | `process.argv[0]` | QuickJS-ng includes only the executable path |
+    | `scriptArgs` | `process.argv.slice(1)` | QuickJS-ng includes the script name |
+    | `print()` | `console.log()` | QuickJS-ng `print()` is simpler |
+    | `gc()` | `global.gc()` | Node.js requires `--expose-gc` flag |
+  </Accordion>
+  
+  <Accordion title="Browser Compatibility">
+    QuickJS-ng globals differ from browsers:
+    
+    | QuickJS-ng | Browser | Notes |
+    |------------|---------|-------|
+    | `argv0` | Not available | Browser concept doesn't apply |
+    | `scriptArgs` | Not available | Use URL parameters in browsers |
+    | `print()` | `window.print()` | Different function entirely |
+    | `navigator.userAgent` | `navigator.userAgent` | Similar concept, different format |
+  </Accordion>
+</AccordionGroup>
+
+## Example: Command-Line Script
+
+```javascript
+#!/usr/bin/env qjs
+
+if (scriptArgs.length < 2) {
+  print('Usage:', scriptArgs[0], '<filename>');
+  std.exit(1);
+}
+
+const filename = scriptArgs[1];
+print('Processing file:', filename);
+
+// Process file...
+const content = std.loadFile(filename);
+if (content === null) {
+  print('Error: Could not read file');
+  std.exit(1);
+}
+
+print('File size:', content.length, 'bytes');
+print('User agent:', navigator.userAgent);
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="std Module" icon="book" href="/stdlib/std-module">
+    Explore the standard library module
+  </Card>
+  <Card title="os Module" icon="server" href="/stdlib/os-module">
+    Learn about OS-level functions
+  </Card>
+  <Card title="Overview" icon="arrow-left" href="/stdlib/overview">
+    Return to stdlib overview
+  </Card>
+</CardGroup>

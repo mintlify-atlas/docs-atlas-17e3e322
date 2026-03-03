@@ -1,0 +1,81 @@
+---
+title: QuickJS-ng - A Mighty JavaScript Engine
+description: A small and embeddable JavaScript engine supporting the latest ECMAScript specification
+---
+
+# QuickJS-ng - A Mighty JavaScript Engine
+
+QuickJS is a small and embeddable JavaScript engine that aims to support the latest [ECMAScript specification](https://tc39.es/ecma262/). This project is a fork of the original QuickJS project by Fabrice Bellard and Charlie Gordon, revitalized with the intent of reigniting its development.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Small & Embeddable" icon="cube">
+    Compact footprint designed for embedding in applications with minimal overhead
+  </Card>
+  <Card title="ES2023+ Support" icon="sparkles">
+    Aims to support the latest ECMAScript specification features
+  </Card>
+  <Card title="Cross-Platform" icon="globe">
+    Works on Linux, macOS, Windows, and embedded systems
+  </Card>
+  <Card title="Community Driven" icon="users">
+    Active community development with regular updates and improvements
+  </Card>
+</CardGroup>
+
+## What Makes QuickJS-ng Special?
+
+This fork is focused on:
+
+- **Community Development** - Active maintenance and feature development
+- **Comprehensive Testing** - Includes test262 suite for ECMAScript compliance
+- **Cross-Platform Support** - First-class support for multiple operating systems
+- **Modern ES Features** - Continuous implementation of new ECMAScript features
+
+## Quick Example
+
+Here's a simple example of embedding QuickJS in a C application:
+
+```c
+#include "quickjs.h"
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    
+    const char *code = "console.log('Hello from QuickJS!')";
+    JSValue result = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    
+    JS_FreeValue(ctx, result);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    
+    return 0;
+}
+```
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running with QuickJS in minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Install QuickJS using prebuilt binaries or package managers
+  </Card>
+  <Card title="Build from Source" icon="hammer" href="/building">
+    Compile QuickJS from source for your platform
+  </Card>
+  <Card title="API Reference" icon="book" href="/api">
+    Explore the complete QuickJS API documentation
+  </Card>
+</CardGroup>
+
+## Open Source & Community
+
+QuickJS-ng is open source and licensed under the MIT license. The project is maintained by [@bnoordhuis](https://github.com/bnoordhuis), [@saghul](https://github.com/saghul), and [many contributors](https://github.com/quickjs-ng/quickjs/graphs/contributors).
+
+<Note>
+  QuickJS-ng is a fork of the [original QuickJS project](https://bellard.org/quickjs) that went dormant. This fork aims to continue its legacy with active development.
+</Note>

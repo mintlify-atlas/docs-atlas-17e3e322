@@ -1,0 +1,231 @@
+---
+title: Development Guide
+description: How to contribute to QuickJS-ng
+---
+
+# Development Guide
+
+QuickJS-ng is an open-source JavaScript engine that welcomes contributions from the community. This guide will help you get started with contributing to the project.
+
+## Getting Started
+
+### Prerequisites
+
+- Git
+- CMake 3.x or higher
+- A C compiler (GCC, Clang, MSVC, or TCC)
+- Make (on Unix-like systems)
+
+### Cloning the Repository
+
+```bash
+git clone https://github.com/quickjs-ng/quickjs.git
+cd quickjs
+```
+
+## Building QuickJS-ng
+
+### Quick Build
+
+The simplest way to build QuickJS-ng is using the helper Makefile:
+
+```bash
+make
+```
+
+This will build the `qjs` and `qjsc` executables and other test tools.
+
+### Debug Build
+
+For development, you'll want to create a debug build without optimizations:
+
+```bash
+make debug
+```
+
+### Manual CMake Build
+
+If you prefer to use CMake directly (required on Windows):
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+For a debug build:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+## Contribution Workflow
+
+<Steps>
+
+### Fork and Clone
+
+Fork the repository on GitHub and clone your fork locally:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/quickjs.git
+cd quickjs
+git remote add upstream https://github.com/quickjs-ng/quickjs.git
+```
+
+### Create a Branch
+
+Create a new branch for your changes:
+
+```bash
+git checkout -b my-feature-branch
+```
+
+### Make Your Changes
+
+Edit the code, add tests, and ensure your changes follow the project's coding style.
+
+### Build and Test
+
+Build the project and run the test suite:
+
+```bash
+make
+make test
+```
+
+### Commit Your Changes
+
+Write clear, descriptive commit messages:
+
+```bash
+git add .
+git commit -m "Add feature: description of your changes"
+```
+
+### Push and Create a Pull Request
+
+Push your branch to your fork:
+
+```bash
+git push origin my-feature-branch
+```
+
+Then create a pull request on GitHub from your branch to the main QuickJS-ng repository.
+
+</Steps>
+
+## Development Tools
+
+### Code Generation
+
+If you modify bytecode or built-in modules, regenerate the generated code:
+
+```bash
+make codegen
+```
+
+### Syntax Checking
+
+Verify that generated C code compiles correctly:
+
+```bash
+make jscheck
+```
+
+### C++ Compatibility
+
+Test that the codebase compiles as C++:
+
+```bash
+make cxxtest
+```
+
+### Statistics
+
+View engine statistics and memory usage:
+
+```bash
+make stats
+```
+
+## Build Options
+
+### Amalgamated Build
+
+Create a single-file amalgamated build:
+
+```bash
+make amalgam
+```
+
+This generates `quickjs-amalgam.zip` containing a single `quickjs-amalgam.c` file.
+
+### Shared Libraries
+
+Build shared libraries instead of static:
+
+```bash
+make BUILD_SHARED_LIBS=ON
+```
+
+### Examples
+
+Build with examples enabled:
+
+```bash
+make QJS_BUILD_EXAMPLES=ON
+```
+
+## Sanitizers
+
+### Address Sanitizer (ASan) and Undefined Behavior Sanitizer (UBSan)
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQJS_ENABLE_ASAN=ON -DQJS_ENABLE_UBSAN=ON
+cmake --build build
+```
+
+### Memory Sanitizer (MSan)
+
+```bash
+export CC=clang
+cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQJS_ENABLE_MSAN=ON
+cmake --build build
+```
+
+## CI/CD
+
+QuickJS-ng uses GitHub Actions for continuous integration. The CI pipeline tests:
+
+- Multiple platforms: Linux, macOS, Windows, FreeBSD, OpenBSD
+- Multiple compilers: GCC, Clang, MSVC, TCC, MinGW
+- Multiple architectures: x86, x64, ARM64, RISC-V, s390x
+- Sanitizers: ASan, UBSan, MSan
+- Special builds: Emscripten, WASI, Android, iOS
+- Test262 compliance suite
+
+All pull requests must pass CI checks before being merged.
+
+## Coding Guidelines
+
+- Follow the existing code style and conventions
+- Write clear, self-documenting code with comments where necessary
+- Add tests for new features and bug fixes
+- Ensure all tests pass before submitting a pull request
+- Keep commits focused and atomic
+- Write descriptive commit messages
+
+## Getting Help
+
+If you need help or have questions:
+
+- Check the [project documentation](https://quickjs-ng.github.io/quickjs/)
+- Open an issue on GitHub for bugs or feature requests
+- Review existing issues and pull requests for similar topics
+
+## Authors
+
+QuickJS-ng is maintained by [@bnoordhuis](https://github.com/bnoordhuis), [@saghul](https://github.com/saghul), and many [contributors](https://github.com/quickjs-ng/quickjs/graphs/contributors).
+
+The original QuickJS engine was created by Fabrice Bellard and Charlie Gordon.

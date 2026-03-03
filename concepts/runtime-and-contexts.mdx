@@ -1,0 +1,226 @@
+---
+title: Runtime and contexts
+description: Understanding JSRuntime and JSContext in QuickJS
+---
+
+## Overview
+
+QuickJS uses a two-level architecture to manage JavaScript execution environments:
+
+- **JSRuntime** - Represents an isolated JavaScript runtime with its own object heap
+- **JSContext** - Represents a JavaScript realm with its own global objects
+
+## JSRuntime
+
+`JSRuntime` represents a JavaScript runtime corresponding to an object heap. Several runtimes can exist at the same time but they cannot exchange objects. Inside a given runtime, no multi-threading is supported.
+
+```c
+typedef struct JSRuntime JSRuntime;
+```
+
+### Creating a runtime
+
+```c
+// Create a new runtime with default allocators
+JSRuntime *rt = JS_NewRuntime();
+if (!rt) {
+    fprintf(stderr, "Failed to create runtime\n");
+    return 1;
+}
+
+// Configure the runtime
+JS_SetMemoryLimit(rt, 256 * 1024 * 1024);  // 256 MB
+JS_SetMaxStackSize(rt, 1024 * 1024);        // 1 MB
+
+// Use the runtime...
+
+// Free the runtime when done
+JS_FreeRuntime(rt);
+```
+
+### Runtime isolation
+
+Each runtime maintains its own:
+
+- **Object heap** - All JavaScript objects are allocated within a runtime's heap
+- **Garbage collector** - Each runtime has independent GC
+- **Memory limits** - Memory constraints are per-runtime
+- **Class definitions** - JS classes are registered per-runtime
+
+<Warning>
+Objects from different runtimes cannot be mixed. Attempting to use an object from one runtime in another will lead to undefined behavior.
+</Warning>
+
+### Custom allocators
+
+You can provide custom memory allocation functions:
+
+```c
+typedef struct {
+    void *(*js_malloc)(JSMallocState *s, size_t size);
+    void (*js_free)(JSMallocState *s, void *ptr);
+    void *(*js_realloc)(JSMallocState *s, void *ptr, size_t size);
+    size_t (*js_malloc_usable_size)(const void *ptr);
+} JSMallocFunctions;
+
+JSMallocFunctions my_allocators = {
+    .js_malloc = my_malloc,
+    .js_free = my_free,
+    .js_realloc = my_realloc,
+    .js_malloc_usable_size = my_malloc_usable_size
+};
+
+JSRuntime *rt = JS_NewRuntime2(&my_allocators, NULL);
+```
+
+## JSContext
+
+`JSContext` represents a JavaScript context (or Realm). Each JSContext has its own global objects and system objects. There can be several JSContexts per JSRuntime and they can share objects.
+
+```c
+typedef struct JSContext JSContext;
+```
+
+### Creating a context
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+
+// Create a new context with standard intrinsics
+JSContext *ctx = JS_NewContext(rt);
+if (!ctx) {
+    fprintf(stderr, "Failed to create context\n");
+    JS_FreeRuntime(rt);
+    return 1;
+}
+
+// Use the context...
+
+// Free the context when done
+JS_FreeContext(ctx);
+JS_FreeRuntime(rt);
+```
+
+### Context properties
+
+Each context has:
+
+- **Global object** - Independent `globalThis` object
+- **Standard objects** - Separate `Object`, `Array`, `Function`, etc.
+- **Built-in prototypes** - Independent prototype chains
+- **Module namespace** - Separate module registry
+
+### Multiple contexts
+
+Contexts within the same runtime can share objects, similar to frames of the same origin in a web browser:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+
+JSContext *ctx1 = JS_NewContext(rt);
+JSContext *ctx2 = JS_NewContext(rt);
+
+// Create an object in ctx1
+JSValue obj = JS_NewObject(ctx1);
+JS_SetPropertyStr(ctx1, obj, "message", JS_NewString(ctx1, "Hello"));
+
+// The same object can be used in ctx2 (they share the runtime)
+JSValue result = JS_GetPropertyStr(ctx2, obj, "message");
+const char *str = JS_ToCString(ctx2, result);
+printf("Message: %s\n", str);  // "Message: Hello"
+
+// Cleanup
+JS_FreeCString(ctx2, str);
+JS_FreeValue(ctx2, result);
+JS_FreeValue(ctx1, obj);
+JS_FreeContext(ctx2);
+JS_FreeContext(ctx1);
+JS_FreeRuntime(rt);
+```
+
+### Context use cases
+
+Multiple contexts are useful for:
+
+- **Sandboxing** - Isolate untrusted code with separate globals
+- **Testing** - Create fresh environments for each test
+- **Plugin systems** - Give each plugin its own namespace
+- **Worker simulation** - Simulate web workers with shared data
+
+## Runtime vs. Context
+
+| Feature | JSRuntime | JSContext |
+|---------|-----------|----------|
+| **Object heap** | Owns the heap | Shares runtime's heap |
+| **Memory limit** | Has limit | Shares runtime's limit |
+| **Global object** | N/A | Has own global |
+| **Thread safety** | Not thread-safe | Not thread-safe |
+| **Object sharing** | Cannot share between runtimes | Can share within same runtime |
+| **Lifetime** | Must outlive all contexts | Can be created/destroyed independently |
+
+## Best practices
+
+<Tip>
+**One runtime per application** - For most applications, create a single runtime and multiple contexts as needed.
+</Tip>
+
+<Tip>
+**Cleanup order** - Always free contexts before freeing the runtime they belong to.
+</Tip>
+
+<Warning>
+**No multithreading** - QuickJS does not support multi-threading within a runtime. Use separate runtimes for concurrent execution.
+</Warning>
+
+## Example: Multi-context application
+
+```c
+#include <quickjs.h>
+#include <stdio.h>
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    if (!rt) return 1;
+    
+    // Configure runtime
+    JS_SetMemoryLimit(rt, 10 * 1024 * 1024);  // 10 MB
+    
+    // Create main context
+    JSContext *main_ctx = JS_NewContext(rt);
+    if (!main_ctx) {
+        JS_FreeRuntime(rt);
+        return 1;
+    }
+    
+    // Create sandbox context for untrusted code
+    JSContext *sandbox_ctx = JS_NewContext(rt);
+    if (!sandbox_ctx) {
+        JS_FreeContext(main_ctx);
+        JS_FreeRuntime(rt);
+        return 1;
+    }
+    
+    // Execute code in main context
+    JS_Eval(main_ctx, "globalThis.appData = { version: '1.0' };",
+            strlen("globalThis.appData = { version: '1.0' };"),
+            "<main>", JS_EVAL_TYPE_GLOBAL);
+    
+    // Execute untrusted code in sandbox
+    JS_Eval(sandbox_ctx, "globalThis.userScript = function() { return 42; };",
+            strlen("globalThis.userScript = function() { return 42; };"),
+            "<sandbox>", JS_EVAL_TYPE_GLOBAL);
+    
+    // Cleanup
+    JS_FreeContext(sandbox_ctx);
+    JS_FreeContext(main_ctx);
+    JS_FreeRuntime(rt);
+    
+    return 0;
+}
+```
+
+## See also
+
+- [Runtime creation](/api/runtime/creation) - Runtime lifecycle API
+- [Context creation](/api/context/creation) - Context lifecycle API
+- [Context realms](/api/context/realms) - Advanced multi-context patterns

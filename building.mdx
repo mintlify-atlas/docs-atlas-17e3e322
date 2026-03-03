@@ -1,0 +1,385 @@
+---
+title: Building from Source
+description: Compile QuickJS from source with custom options and configurations
+---
+
+# Building from Source
+
+QuickJS uses [CMake](https://cmake.org) as its primary build system, with a convenient [Makefile](https://www.gnu.org/software/make/) wrapper for Unix-like systems.
+
+<Note>
+  Windows users need to run CMake commands manually. See the [Windows build instructions](#windows) below.
+</Note>
+
+## Prerequisites
+
+<Steps>
+  <Step title="Install build tools">
+    <CodeGroup>
+    ```bash Ubuntu/Debian
+    sudo apt-get update
+    sudo apt-get install build-essential cmake git
+    ```
+
+    ```bash Fedora/RHEL
+    sudo dnf install gcc cmake make git
+    ```
+
+    ```bash macOS
+    # Install Xcode Command Line Tools
+    xcode-select --install
+    
+    # Install CMake (using Homebrew)
+    brew install cmake
+    ```
+
+    ```powershell Windows
+    # Install Visual Studio 2017 or later with C++ tools
+    # Install CMake from https://cmake.org/download/
+    # Install Git from https://git-scm.com/download/win
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/quickjs-ng/quickjs.git
+    cd quickjs
+    ```
+  </Step>
+</Steps>
+
+## Standard Build
+
+<Steps>
+  <Step title="Build with Makefile (Linux/macOS)">
+    The simplest way to build QuickJS:
+
+    ```bash
+    make
+    ```
+
+    This creates:
+    - `build/qjs` - The QuickJS interpreter
+    - `build/qjsc` - The QuickJS compiler
+    - `build/libquickjs.a` - Static library
+    - Additional test tools
+  </Step>
+
+  <Step title="Install system-wide">
+    ```bash
+    sudo make install
+    ```
+
+    Default installation prefix is `/usr/local`. To customize:
+
+    ```bash
+    make install INSTALL_PREFIX=/custom/path
+    ```
+  </Step>
+</Steps>
+
+## Build Types
+
+### Debug Build
+
+For development work with debug symbols and no optimizations:
+
+```bash
+make debug
+```
+
+Or manually:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+<Tip>
+  Debug builds are essential for debugging with gdb or lldb. They include symbols and disable optimizations that can make debugging difficult.
+</Tip>
+
+### Release Build
+
+Optimized build for production (default):
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+### Shared Library Build
+
+Build QuickJS as a shared library:
+
+```bash
+cmake -B build -DBUILD_SHARED_LIBS=ON
+cmake --build build
+```
+
+## CMake Build Options
+
+QuickJS supports several CMake options for customization:
+
+| Option | Description | Default |
+|--------|-------------|----------|
+| `BUILD_SHARED_LIBS` | Build shared library instead of static | `OFF` |
+| `QJS_BUILD_WERROR` | Build with -Werror (treat warnings as errors) | `OFF` |
+| `QJS_BUILD_EXAMPLES` | Build example programs | `OFF` |
+| `QJS_BUILD_CLI_STATIC` | Build static qjs executable | `OFF` |
+| `QJS_DISABLE_PARSER` | Disable JavaScript parser | `OFF` |
+| `QJS_ENABLE_ASAN` | Enable AddressSanitizer | `OFF` |
+| `QJS_ENABLE_MSAN` | Enable MemorySanitizer | `OFF` |
+| `QJS_ENABLE_TSAN` | Enable ThreadSanitizer | `OFF` |
+| `QJS_ENABLE_UBSAN` | Enable UndefinedBehaviorSanitizer | `OFF` |
+
+### Example: Build with Options
+
+```bash
+cmake -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=ON \
+  -DQJS_BUILD_EXAMPLES=ON \
+  -DQJS_ENABLE_UBSAN=ON
+  
+cmake --build build -j $(nproc)
+```
+
+<Warning>
+  Sanitizers (ASAN, MSAN, TSAN, UBSAN) are for testing only. Don't use them in production builds as they significantly impact performance.
+</Warning>
+
+## Platform-Specific Builds
+
+### Windows
+
+<Steps>
+  <Step title="Generate Visual Studio project">
+    ```powershell
+    cmake -B build -G "Visual Studio 16 2019" -A x64
+    ```
+  </Step>
+
+  <Step title="Build the project">
+    ```powershell
+    cmake --build build --config Release
+    ```
+  </Step>
+
+  <Step title="Run the binaries">
+    ```powershell
+    .\build\Release\qjs.exe
+    ```
+  </Step>
+</Steps>
+
+### MinGW on Windows
+
+```bash
+cmake -B build -G "MinGW Makefiles"
+cmake --build build
+```
+
+### Cross-Compilation
+
+For ARM or other architectures, use a CMake toolchain file:
+
+```bash
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=path/to/toolchain.cmake
+cmake --build build
+```
+
+## Amalgamated Build
+
+The amalgamated build combines all QuickJS source files into a single `quickjs-amalgam.c` file. This is ideal for embedding in projects without CMake.
+
+<Steps>
+  <Step title="Build QuickJS first">
+    ```bash
+    make
+    ```
+  </Step>
+
+  <Step title="Generate amalgamated source">
+    ```bash
+    make amalgam
+    ```
+
+    This creates `build/quickjs-amalgam.zip` containing:
+    - `quickjs-amalgam.c`
+    - `quickjs.h`
+    - `quickjs-libc.h`
+  </Step>
+
+  <Step title="Use in your project">
+    ```bash
+    unzip build/quickjs-amalgam.zip
+    gcc -c quickjs-amalgam.c -DQJS_BUILD_LIBC -o quickjs.o
+    gcc your_app.c quickjs.o -lm -lpthread -o your_app
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  To enable the `std`, `os`, and `bjson` modules in amalgamated builds, compile with `-DQJS_BUILD_LIBC`.
+</Tip>
+
+## Testing
+
+### Run Test262 Suite
+
+Test QuickJS against the official ECMAScript test suite:
+
+```bash
+make test262
+```
+
+This runs the [test262](https://github.com/tc39/test262) conformance tests.
+
+### Update Test Results
+
+After implementing new features, update the test results:
+
+```bash
+make test262-update
+```
+
+This regenerates the error/pass report based on current test results.
+
+## Advanced Build Options
+
+### Parallel Builds
+
+Speed up compilation by using multiple CPU cores:
+
+```bash
+# Using make
+make -j$(nproc)
+
+# Using CMake
+cmake --build build -j $(nproc)
+```
+
+### Custom Installation Prefix
+
+```bash
+cmake -B build -DCMAKE_INSTALL_PREFIX=/opt/quickjs
+cmake --build build
+cmake --install build
+```
+
+### Static REPL Executable
+
+Build a fully static `qjs` binary:
+
+```bash
+cmake -B build -DQJS_BUILD_CLI_STATIC=ON
+cmake --build build
+```
+
+### Build with mimalloc
+
+Use the [mimalloc](https://github.com/microsoft/mimalloc) allocator for better performance:
+
+```bash
+cmake -B build -DQJS_BUILD_CLI_WITH_MIMALLOC=ON
+cmake --build build
+```
+
+## Cleaning Build Artifacts
+
+<CodeGroup>
+```bash Clean build directory
+make clean
+```
+
+```bash Remove build directory entirely
+make distclean
+# Or manually:
+rm -rf build
+```
+</CodeGroup>
+
+## Verifying the Build
+
+After building, verify everything works:
+
+<Steps>
+  <Step title="Test the interpreter">
+    ```bash
+    ./build/qjs
+    # In the REPL:
+    qjs > console.log('Build successful!')
+    Build successful!
+    ```
+  </Step>
+
+  <Step title="Test the compiler">
+    ```bash
+    echo 'console.log(42)' > test.js
+    ./build/qjsc -o test.c test.js
+    gcc test.c -o test -lm -lpthread
+    ./test
+    # Output: 42
+    ```
+  </Step>
+
+  <Step title="Check statistics">
+    ```bash
+    make stats
+    ```
+    This displays QuickJS internal statistics.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Build Fails with Missing Dependencies
+
+Make sure you have all required tools:
+
+```bash
+cmake --version  # Should be 3.10 or higher
+gcc --version    # Or your C compiler
+make --version
+```
+
+### Linker Errors
+
+Ensure you're linking all required libraries:
+
+```bash
+gcc your_app.c -lquickjs -lm -lpthread -o your_app
+```
+
+### Permission Errors During Install
+
+Use `sudo` for system-wide installation:
+
+```bash
+sudo make install
+```
+
+Or install to a user directory:
+
+```bash
+make install INSTALL_PREFIX=$HOME/.local
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Start using your QuickJS build
+  </Card>
+  <Card title="API Reference" icon="book" href="/api">
+    Learn the QuickJS C API
+  </Card>
+  <Card title="Examples" icon="code" href="/examples">
+    Explore code examples
+  </Card>
+  <Card title="Contributing" icon="github" href="/contributing">
+    Contribute to QuickJS development
+  </Card>
+</CardGroup>

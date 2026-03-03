@@ -1,0 +1,445 @@
+---
+title: Build Options
+description: CMake and Meson build configuration options for QuickJS-ng
+---
+
+QuickJS-ng provides extensive build configuration options through both CMake and Meson build systems. This guide covers all available options and their usage.
+
+## Build Systems
+
+QuickJS-ng supports two build systems:
+
+<CardGroup cols={2}>
+  <Card title="CMake" icon="hammer">
+    Industry-standard build system with broad platform support
+  </Card>
+  <Card title="Meson" icon="bolt">
+    Modern, fast build system with excellent cross-compilation support
+  </Card>
+</CardGroup>
+
+## CMake Build Options
+
+### Library Options
+
+#### BUILD_SHARED_LIBS
+
+<ParamField path="BUILD_SHARED_LIBS" type="boolean" default="OFF">
+  Build QuickJS as a shared library instead of static library.
+  
+  ```bash
+  cmake -B build -DBUILD_SHARED_LIBS=ON
+  ```
+</ParamField>
+
+#### QJS_BUILD_LIBC
+
+<ParamField path="QJS_BUILD_LIBC" type="boolean" default="OFF">
+  Build standard library modules as part of the library. When enabled, `quickjs-libc.c` is compiled into the main library.
+  
+  ```bash
+  cmake -B build -DQJS_BUILD_LIBC=ON
+  ```
+</ParamField>
+
+### CLI Options
+
+#### QJS_BUILD_CLI_STATIC
+
+<ParamField path="QJS_BUILD_CLI_STATIC" type="boolean" default="OFF">
+  Build a static qjs executable with all dependencies linked statically.
+  
+  ```bash
+  cmake -B build -DQJS_BUILD_CLI_STATIC=ON
+  ```
+</ParamField>
+
+#### QJS_BUILD_CLI_WITH_MIMALLOC
+
+<ParamField path="QJS_BUILD_CLI_WITH_MIMALLOC" type="boolean" default="OFF">
+  Build the qjs executable with mimalloc allocator (dynamically linked).
+  
+  ```bash
+  cmake -B build -DQJS_BUILD_CLI_WITH_MIMALLOC=ON
+  ```
+</ParamField>
+
+#### QJS_BUILD_CLI_WITH_STATIC_MIMALLOC
+
+<ParamField path="QJS_BUILD_CLI_WITH_STATIC_MIMALLOC" type="boolean" default="OFF">
+  Build the qjs executable with mimalloc allocator (statically linked).
+  
+  ```bash
+  cmake -B build -DQJS_BUILD_CLI_WITH_STATIC_MIMALLOC=ON
+  ```
+</ParamField>
+
+### Feature Options
+
+#### QJS_DISABLE_PARSER
+
+<ParamField path="QJS_DISABLE_PARSER" type="boolean" default="OFF">
+  Disable JavaScript source code parser. Useful for environments that only execute bytecode.
+  
+  ```bash
+  cmake -B build -DQJS_DISABLE_PARSER=ON
+  ```
+</ParamField>
+
+<Warning>
+  When `QJS_DISABLE_PARSER` is enabled, you can only execute pre-compiled bytecode. The `qjsc` compiler and `qjs` REPL will not be built.
+</Warning>
+
+### Examples and Tests
+
+#### QJS_BUILD_EXAMPLES
+
+<ParamField path="QJS_BUILD_EXAMPLES" type="boolean" default="OFF">
+  Build example programs including:
+  - `hello` - Simple hello world
+  - `hello_module` - Module example
+  - `test_fib` - Fibonacci test
+  - `fib.so` / `point.so` - Native module examples
+  
+  ```bash
+  cmake -B build -DQJS_BUILD_EXAMPLES=ON
+  ```
+</ParamField>
+
+### Compiler Options
+
+#### QJS_BUILD_WERROR
+
+<ParamField path="QJS_BUILD_WERROR" type="boolean" default="OFF">
+  Build with `-Werror` flag, treating all warnings as errors.
+  
+  ```bash
+  cmake -B build -DQJS_BUILD_WERROR=ON
+  ```
+</ParamField>
+
+### Sanitizer Options
+
+QuickJS-ng supports multiple sanitizers for development and debugging:
+
+#### QJS_ENABLE_ASAN
+
+<ParamField path="QJS_ENABLE_ASAN" type="boolean" default="OFF">
+  Enable AddressSanitizer (ASan) for detecting memory errors.
+  
+  ```bash
+  cmake -B build -DQJS_ENABLE_ASAN=ON
+  ```
+</ParamField>
+
+#### QJS_ENABLE_MSAN
+
+<ParamField path="QJS_ENABLE_MSAN" type="boolean" default="OFF">
+  Enable MemorySanitizer (MSan) for detecting uninitialized memory reads.
+  
+  ```bash
+  cmake -B build -DQJS_ENABLE_MSAN=ON
+  ```
+  
+  <Note>
+    MSan only works with Clang at the time of writing.
+  </Note>
+</ParamField>
+
+#### QJS_ENABLE_TSAN
+
+<ParamField path="QJS_ENABLE_TSAN" type="boolean" default="OFF">
+  Enable ThreadSanitizer (TSan) for detecting data races.
+  
+  ```bash
+  cmake -B build -DQJS_ENABLE_TSAN=ON
+  ```
+  
+  <Warning>
+    TSan is currently incompatible with other sanitizers.
+  </Warning>
+</ParamField>
+
+#### QJS_ENABLE_UBSAN
+
+<ParamField path="QJS_ENABLE_UBSAN" type="boolean" default="OFF">
+  Enable UndefinedBehaviorSanitizer (UBSan) for detecting undefined behavior.
+  
+  ```bash
+  cmake -B build -DQJS_ENABLE_UBSAN=ON
+  ```
+</ParamField>
+
+### WASI Options
+
+#### QJS_WASI_REACTOR
+
+<ParamField path="QJS_WASI_REACTOR" type="boolean" default="OFF">
+  Build WASI reactor module that exports library functions without `_start` entry point.
+  
+  ```bash
+  cmake -B build -DCMAKE_SYSTEM_NAME=WASI -DQJS_WASI_REACTOR=ON
+  ```
+  
+  Only available when `CMAKE_SYSTEM_NAME` is set to `WASI`.
+</ParamField>
+
+## Meson Build Options
+
+### Core Options
+
+#### libc
+
+<ParamField path="libc" type="boolean" default="false">
+  Build qjs standard library modules as part of the library.
+  
+  ```bash
+  meson setup build -Dlibc=true
+  ```
+</ParamField>
+
+#### parser
+
+<ParamField path="parser" type="boolean" default="true">
+  Enable JavaScript source code parser.
+  
+  ```bash
+  meson setup build -Dparser=false
+  ```
+</ParamField>
+
+### CLI Options
+
+#### cli_mimalloc
+
+<ParamField path="cli_mimalloc" type="feature" default="disabled">
+  Build qjs CLI with mimalloc allocator.
+  
+  Options: `enabled`, `disabled`, `auto`
+  
+  ```bash
+  meson setup build -Dcli_mimalloc=enabled
+  ```
+</ParamField>
+
+### Development Options
+
+#### tests
+
+<ParamField path="tests" type="feature" default="auto">
+  Build tests including Test262 runner and benchmarks.
+  
+  ```bash
+  meson setup build -Dtests=enabled
+  ```
+</ParamField>
+
+#### examples
+
+<ParamField path="examples" type="feature" default="auto">
+  Build example programs.
+  
+  ```bash
+  meson setup build -Dexamples=enabled
+  ```
+</ParamField>
+
+#### docdir
+
+<ParamField path="docdir" type="string" default="">
+  Documentation installation directory.
+  
+  ```bash
+  meson setup build -Ddocdir=/usr/share/doc/quickjs-ng
+  ```
+</ParamField>
+
+## Common Build Configurations
+
+### Development Build
+
+<Tabs>
+  <Tab title="CMake">
+    ```bash
+    cmake -B build \
+      -DCMAKE_BUILD_TYPE=Debug \
+      -DQJS_BUILD_EXAMPLES=ON \
+      -DQJS_ENABLE_ASAN=ON
+    cmake --build build
+    ```
+  </Tab>
+  <Tab title="Meson">
+    ```bash
+    meson setup build \
+      --buildtype=debug \
+      -Dexamples=enabled \
+      -Dtests=enabled
+    meson compile -C build
+    ```
+  </Tab>
+</Tabs>
+
+### Production Build
+
+<Tabs>
+  <Tab title="CMake">
+    ```bash
+    cmake -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=ON \
+      -DCMAKE_INSTALL_PREFIX=/usr/local
+    cmake --build build
+    cmake --install build
+    ```
+  </Tab>
+  <Tab title="Meson">
+    ```bash
+    meson setup build \
+      --buildtype=release \
+      --prefix=/usr/local \
+      --default-library=shared
+    meson compile -C build
+    meson install -C build
+    ```
+  </Tab>
+</Tabs>
+
+### Static Library Build
+
+<Tabs>
+  <Tab title="CMake">
+    ```bash
+    cmake -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DQJS_BUILD_CLI_STATIC=ON
+    cmake --build build
+    ```
+  </Tab>
+  <Tab title="Meson">
+    ```bash
+    meson setup build \
+      --buildtype=release \
+      --default-library=static
+    meson compile -C build
+    ```
+  </Tab>
+</Tabs>
+
+### Bytecode-Only Build
+
+<Tabs>
+  <Tab title="CMake">
+    ```bash
+    cmake -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DQJS_DISABLE_PARSER=ON
+    cmake --build build
+    ```
+  </Tab>
+  <Tab title="Meson">
+    ```bash
+    meson setup build \
+      --buildtype=release \
+      -Dparser=false
+    meson compile -C build
+    ```
+  </Tab>
+</Tabs>
+
+## Environment Variables
+
+All CMake options can also be set via environment variables:
+
+```bash
+export BUILD_SHARED_LIBS=ON
+export QJS_BUILD_EXAMPLES=ON
+cmake -B build
+```
+
+## Build Type Options
+
+### CMake Build Types
+
+- `Debug` - No optimization, full debug symbols
+- `Release` - Full optimization, no debug symbols
+- `RelWithDebInfo` - Optimization with debug symbols
+- `MinSizeRel` - Optimize for size
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+```
+
+### Meson Build Types
+
+- `debug` - No optimization, full debug info
+- `release` - Full optimization
+- `debugoptimized` - Optimization with debug info
+- `minsize` - Optimize for size
+
+```bash
+meson setup build --buildtype=release
+```
+
+## Installation Prefix
+
+<Tabs>
+  <Tab title="CMake">
+    ```bash
+    cmake -B build -DCMAKE_INSTALL_PREFIX=/usr/local
+    cmake --install build
+    ```
+  </Tab>
+  <Tab title="Meson">
+    ```bash
+    meson setup build --prefix=/usr/local
+    meson install -C build
+    ```
+  </Tab>
+</Tabs>
+
+## Using Makefile Wrapper
+
+The included Makefile provides convenient shortcuts for common operations:
+
+```bash
+# Build with default settings (Release)
+make
+
+# Debug build
+make debug
+
+# Install to /usr/local (or INSTALL_PREFIX)
+make install
+
+# Clean build directory
+make clean
+
+# Remove build directory completely
+make distclean
+
+# Build with custom settings
+make BUILD_TYPE=Debug INSTALL_PREFIX=/opt/quickjs
+```
+
+## Parallel Builds
+
+Both build systems support parallel builds:
+
+<Tabs>
+  <Tab title="CMake">
+    ```bash
+    cmake --build build -j $(nproc)
+    ```
+  </Tab>
+  <Tab title="Meson">
+    ```bash
+    meson compile -C build -j $(nproc)
+    ```
+  </Tab>
+  <Tab title="Makefile">
+    ```bash
+    make JOBS=$(nproc)
+    ```
+  </Tab>
+</Tabs>

@@ -1,0 +1,425 @@
+---
+title: Atom Operations
+description: Creating, converting, and managing atoms in QuickJS
+---
+
+# Atom Operations
+
+This page covers all the functions for creating, converting, duplicating, and freeing atoms in QuickJS.
+
+## Creating Atoms
+
+### JS_NewAtom
+
+Creates an atom from a null-terminated C string.
+
+```c
+JSAtom JS_NewAtom(JSContext *ctx, const char *str);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `str` - A null-terminated UTF-8 encoded string
+
+**Returns:** A new atom, or `JS_ATOM_NULL` on error
+
+**Example:**
+
+```c
+JSAtom atom = JS_NewAtom(ctx, "propertyName");
+if (atom == JS_ATOM_NULL) {
+    // Handle error (typically out of memory)
+    return JS_EXCEPTION;
+}
+
+// Use the atom...
+JSValue value = JS_GetProperty(ctx, obj, atom);
+
+// Always free the atom when done
+JS_FreeAtom(ctx, atom);
+```
+
+### JS_NewAtomLen
+
+Creates an atom from a string with explicit length.
+
+```c
+JSAtom JS_NewAtomLen(JSContext *ctx, const char *str, size_t len);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `str` - A UTF-8 encoded string (may contain null bytes)
+- `len` - The length of the string in bytes
+
+**Returns:** A new atom, or `JS_ATOM_NULL` on error
+
+**Example:**
+
+```c
+const char *str = "key\0value";  // String with embedded null
+JSAtom atom = JS_NewAtomLen(ctx, str, 9);  // Full length including null
+JS_FreeAtom(ctx, atom);
+```
+
+### JS_NewAtomUInt32
+
+Creates an atom from a 32-bit unsigned integer.
+
+```c
+JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `n` - An unsigned 32-bit integer
+
+**Returns:** A new atom representing the number
+
+**Description:**
+
+This is useful for array indices and other numeric property keys. JavaScript automatically converts numeric strings to numbers for property access.
+
+**Example:**
+
+```c
+// Access array element at index 5
+JSAtom index_atom = JS_NewAtomUInt32(ctx, 5);
+JSValue element = JS_GetProperty(ctx, array, index_atom);
+JS_FreeAtom(ctx, index_atom);
+
+// Equivalent to JavaScript: array[5]
+```
+
+## Converting Atoms
+
+### JS_AtomToValue
+
+Converts an atom to a JavaScript string value.
+
+```c
+JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `atom` - The atom to convert
+
+**Returns:** A new `JSValue` containing the string, or `JS_EXCEPTION` on error
+
+**Example:**
+
+```c
+JSAtom atom = JS_NewAtom(ctx, "myProperty");
+JSValue str = JS_AtomToValue(ctx, atom);
+
+// Now str is a JavaScript string that can be returned or used
+// Must free both the atom and the value
+JS_FreeAtom(ctx, atom);
+return str;  // Caller will free this
+```
+
+### JS_AtomToString
+
+Converts an atom to a JavaScript string value (same as `JS_AtomToValue`).
+
+```c
+JSValue JS_AtomToString(JSContext *ctx, JSAtom atom);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `atom` - The atom to convert
+
+**Returns:** A new `JSValue` containing the string, or `JS_EXCEPTION` on error
+
+**Note:** This is functionally identical to `JS_AtomToValue()` and exists for API consistency.
+
+### JS_AtomToCString
+
+Converts an atom to a temporary C string.
+
+```c
+const char *JS_AtomToCString(JSContext *ctx, JSAtom atom);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `atom` - The atom to convert
+
+**Returns:** A null-terminated C string, or `NULL` on error. Must be freed with `JS_FreeCString()`.
+
+**Example:**
+
+```c
+JSAtom atom = JS_NewAtom(ctx, "debug");
+const char *str = JS_AtomToCString(ctx, atom);
+if (str) {
+    printf("Atom value: %s\n", str);
+    JS_FreeCString(ctx, str);
+}
+JS_FreeAtom(ctx, atom);
+```
+
+### JS_AtomToCStringLen
+
+Converts an atom to a C string with length information.
+
+```c
+const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `plen` - Pointer to receive the string length, or `NULL`
+- `atom` - The atom to convert
+
+**Returns:** A C string, or `NULL` on error. Must be freed with `JS_FreeCString()`.
+
+**Example:**
+
+```c
+JSAtom atom = JS_NewAtom(ctx, "example");
+size_t len;
+const char *str = JS_AtomToCStringLen(ctx, &len, atom);
+if (str) {
+    printf("String: %.*s (length: %zu)\n", (int)len, str, len);
+    JS_FreeCString(ctx, str);
+}
+JS_FreeAtom(ctx, atom);
+```
+
+### JS_ValueToAtom
+
+Converts a JavaScript value to an atom.
+
+```c
+JSAtom JS_ValueToAtom(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `val` - A JavaScript value (typically a string or symbol)
+
+**Returns:** A new atom, or `JS_ATOM_NULL` on error
+
+**Description:**
+
+This function converts a JavaScript value to an atom. It's particularly useful when you receive a value from JavaScript that you need to use as a property key.
+
+**Example:**
+
+```c
+static JSValue get_property_by_key(JSContext *ctx, JSValueConst this_val,
+                                  int argc, JSValueConst *argv) {
+    if (argc < 2) {
+        return JS_ThrowTypeError(ctx, "Expected 2 arguments");
+    }
+    
+    JSAtom key_atom = JS_ValueToAtom(ctx, argv[1]);
+    if (key_atom == JS_ATOM_NULL) {
+        return JS_EXCEPTION;
+    }
+    
+    JSValue result = JS_GetProperty(ctx, argv[0], key_atom);
+    JS_FreeAtom(ctx, key_atom);
+    
+    return result;
+}
+```
+
+## Reference Counting
+
+### JS_DupAtom
+
+Duplicates an atom (increments its reference count).
+
+```c
+JSAtom JS_DupAtom(JSContext *ctx, JSAtom v);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `v` - The atom to duplicate
+
+**Returns:** The same atom value
+
+**Description:**
+
+Increments the reference count of the atom. This is necessary when you need to store an atom or pass it to multiple parts of your code.
+
+**Example:**
+
+```c
+struct MyData {
+    JSAtom name_atom;
+};
+
+void store_atom(JSContext *ctx, struct MyData *data, JSAtom atom) {
+    // Duplicate the atom before storing it
+    data->name_atom = JS_DupAtom(ctx, atom);
+}
+
+void free_data(JSContext *ctx, struct MyData *data) {
+    // Free the stored atom
+    JS_FreeAtom(ctx, data->name_atom);
+}
+```
+
+### JS_DupAtomRT
+
+Duplicates an atom using the runtime.
+
+```c
+JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v);
+```
+
+**Parameters:**
+- `rt` - The JavaScript runtime
+- `v` - The atom to duplicate
+
+**Returns:** The same atom value
+
+**Description:**
+
+Same as `JS_DupAtom()` but operates at the runtime level. Use this when you don't have a context available.
+
+### JS_FreeAtom
+
+Frees an atom (decrements its reference count).
+
+```c
+void JS_FreeAtom(JSContext *ctx, JSAtom v);
+```
+
+**Parameters:**
+- `ctx` - The JavaScript context
+- `v` - The atom to free
+
+**Description:**
+
+Decrements the reference count of the atom. When the count reaches zero, the atom is removed from the intern table. You must call this for every atom you create or duplicate.
+
+**Example:**
+
+```c
+JSAtom atom = JS_NewAtom(ctx, "property");
+// Use atom...
+JS_FreeAtom(ctx, atom);  // Always free when done
+```
+
+### JS_FreeAtomRT
+
+Frees an atom using the runtime.
+
+```c
+void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
+```
+
+**Parameters:**
+- `rt` - The JavaScript runtime
+- `v` - The atom to free
+
+**Description:**
+
+Same as `JS_FreeAtom()` but operates at the runtime level.
+
+## Common Patterns
+
+### Pattern 1: Simple Property Access
+
+```c
+// Create, use, and free in one place
+JSAtom atom = JS_NewAtom(ctx, "name");
+JSValue value = JS_GetProperty(ctx, obj, atom);
+JS_FreeAtom(ctx, atom);
+```
+
+### Pattern 2: Reusing Atoms
+
+```c
+// Create once, use multiple times
+JSAtom name_atom = JS_NewAtom(ctx, "name");
+JSAtom age_atom = JS_NewAtom(ctx, "age");
+
+for (int i = 0; i < count; i++) {
+    JSValue name = JS_GetProperty(ctx, objects[i], name_atom);
+    JSValue age = JS_GetProperty(ctx, objects[i], age_atom);
+    
+    // Process...
+    
+    JS_FreeValue(ctx, name);
+    JS_FreeValue(ctx, age);
+}
+
+JS_FreeAtom(ctx, name_atom);
+JS_FreeAtom(ctx, age_atom);
+```
+
+### Pattern 3: Storing Atoms
+
+```c
+typedef struct {
+    JSAtom key_atom;
+    JSValue value;
+} CachedProperty;
+
+CachedProperty *create_cached_property(JSContext *ctx, const char *key,
+                                       JSValue value) {
+    CachedProperty *prop = malloc(sizeof(CachedProperty));
+    if (!prop) return NULL;
+    
+    prop->key_atom = JS_NewAtom(ctx, key);
+    prop->value = JS_DupValue(ctx, value);
+    
+    return prop;
+}
+
+void free_cached_property(JSContext *ctx, CachedProperty *prop) {
+    if (prop) {
+        JS_FreeAtom(ctx, prop->key_atom);
+        JS_FreeValue(ctx, prop->value);
+        free(prop);
+    }
+}
+```
+
+### Pattern 4: Array Index Access
+
+```c
+// Setting array elements
+for (uint32_t i = 0; i < length; i++) {
+    JSAtom index_atom = JS_NewAtomUInt32(ctx, i);
+    JS_SetProperty(ctx, array, index_atom, compute_value(i));
+    JS_FreeAtom(ctx, index_atom);
+}
+
+// Or use the convenience function
+for (uint32_t i = 0; i < length; i++) {
+    JS_SetPropertyUint32(ctx, array, i, compute_value(i));
+}
+```
+
+## Memory Management Best Practices
+
+1. **Always free atoms you create**: Every `JS_NewAtom()` must have a corresponding `JS_FreeAtom()`.
+
+2. **Match Dup with Free**: Every `JS_DupAtom()` needs a `JS_FreeAtom()`.
+
+3. **Don't double-free**: Only free an atom once per creation/duplication.
+
+4. **Check for NULL**: After creating an atom, check if it's `JS_ATOM_NULL` before using it.
+
+5. **Cache frequently used atoms**: Create commonly-used atoms once and reuse them.
+
+## Performance Considerations
+
+1. **Atom creation has overhead**: Creating atoms is more expensive than using existing ones.
+
+2. **Use convenience functions when appropriate**: For one-time property access, `JS_GetPropertyStr()` is simpler than creating an atom.
+
+3. **Intern common strings**: QuickJS automatically interns common strings, so creating atoms for them is efficient.
+
+## See Also
+
+- [Atoms Overview](/api/atoms/overview) - Understanding atoms and their use cases

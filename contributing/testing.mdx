@@ -1,0 +1,314 @@
+---
+title: Testing
+description: Running tests and test262 compliance suite
+---
+
+# Testing
+
+QuickJS-ng has a comprehensive test suite to ensure correctness and ECMAScript compliance. This guide covers how to run tests and work with the test262 compliance suite.
+
+## Running Tests
+
+### Basic Test Suite
+
+Run the basic QuickJS test suite:
+
+```bash
+make test
+```
+
+This executes the test suite defined in `tests.conf` using the `run-test262` tool.
+
+### Manual Test Execution
+
+You can also run the test runner directly:
+
+```bash
+build/run-test262 -c tests.conf
+```
+
+## Test262 Compliance Suite
+
+[Test262](https://github.com/tc39/test262) is the official ECMAScript conformance test suite. QuickJS-ng runs this suite to ensure spec compliance.
+
+### Running test262
+
+To run the full test262 suite:
+
+```bash
+make test262
+```
+
+This command:
+1. Initializes the test262 submodule if needed
+2. Runs all applicable test262 tests
+3. Reports pass/fail statistics
+
+<Note>
+The test262 suite is extensive and may take several minutes to complete.
+</Note>
+
+### Fast test262 Subset
+
+For quicker feedback during development, run a smaller subset:
+
+```bash
+make test262-fast
+```
+
+### Updating test262 Results
+
+After implementing a new feature that changes test262 results:
+
+```bash
+make test262-update
+```
+
+This updates the error/pass report files, which should be committed with your changes.
+
+### Checking test262 Results
+
+Verify that test262 results match expected outcomes:
+
+```bash
+make test262-check
+```
+
+This runs test262 with the `-E` flag to check against expected results.
+
+## Specialized Tests
+
+### API Tests
+
+Test the C API:
+
+```bash
+build/api-test
+```
+
+### Standalone Compilation Test
+
+Test JavaScript-to-executable compilation:
+
+```bash
+build/qjs -c examples/hello.js -o hello
+./hello
+```
+
+### Examples Tests
+
+If built with examples enabled:
+
+```bash
+build/qjs examples/test_fib.js
+build/qjs examples/test_point.js
+build/qjs tests/test_bjson.js
+build/function_source
+```
+
+### Microbenchmarks
+
+Run performance microbenchmarks:
+
+```bash
+make microbench
+```
+
+This executes `tests/microbench.js` to measure performance of common operations.
+
+## Platform-Specific Testing
+
+### Windows (MSVC)
+
+```bash
+cmake -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+build\Release\run-test262.exe -c tests.conf
+```
+
+### Windows (MinGW)
+
+```bash
+make
+make test
+```
+
+### Emscripten
+
+```bash
+emcmake cmake -B build -DQJS_BUILD_LIBC=ON
+emmake make -C build qjs_wasm
+```
+
+### WASI
+
+```bash
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
+make -C build qjs_exe
+wasmtime run build/qjs -qd
+```
+
+## CI Test Matrix
+
+The continuous integration pipeline tests QuickJS-ng across:
+
+### Operating Systems
+- Ubuntu Linux (latest, 24.04)
+- macOS (latest)
+- Windows (latest, Server 2019)
+- FreeBSD
+- OpenBSD
+- Cygwin
+
+### Architectures
+- x86 (32-bit)
+- x64 (64-bit)
+- ARM64
+- RISC-V (riscv64)
+- s390x
+
+### Build Configurations
+- Debug builds
+- Release builds
+- Shared library builds
+- Example builds
+- Amalgamated builds
+
+### Compilers
+- GCC
+- Clang
+- MSVC (Visual Studio 2022)
+- MinGW (mingw32, mingw64, ucrt64, clang64)
+- TCC (Tiny C Compiler)
+- Clang-CL
+
+### Sanitizers
+- AddressSanitizer (ASan)
+- UndefinedBehaviorSanitizer (UBSan)
+- MemorySanitizer (MSan)
+- ThreadSanitizer (TSan, separate workflow)
+
+### Special Builds
+- Emscripten (WebAssembly)
+- WASI
+- Android (arm64-v8a)
+- iOS
+- Parserless builds
+- mimalloc integration
+
+## Test Runner Options
+
+The `run-test262` tool supports several options:
+
+```bash
+build/run-test262 [options]
+```
+
+### Common Options
+
+- `-c <file>` - Use configuration file
+- `-m` - Run in multi-threaded mode
+- `-a` - Run all tests
+- `-u` - Update test results
+- `-E` - Check expected results
+- `-t <threads>` - Number of threads (default: auto)
+
+### Configuration Files
+
+- `tests.conf` - Basic QuickJS test suite
+- `test262.conf` - Full test262 suite
+- `test262-fast.conf` - Fast test262 subset
+
+## Writing Tests
+
+### Test File Format
+
+QuickJS tests are JavaScript files that throw exceptions on failure:
+
+```javascript
+// Test basic arithmetic
+if (1 + 1 !== 2) {
+    throw new Error("Math is broken!");
+}
+
+// Tests pass if no exception is thrown
+```
+
+### Adding Tests
+
+1. Create a new `.js` file in the `tests/` directory
+2. Add test cases that throw on failure
+3. Add the test to the appropriate `.conf` file
+4. Run the test suite to verify
+
+## Debugging Test Failures
+
+### Run a Single Test
+
+```bash
+build/qjs tests/test_file.js
+```
+
+### Enable Debug Output
+
+```bash
+build/qjs -d tests/test_file.js
+```
+
+### Use Sanitizers
+
+Build with sanitizers to catch memory errors:
+
+```bash
+cmake -B build -DQJS_ENABLE_ASAN=ON -DQJS_ENABLE_UBSAN=ON
+cmake --build build
+export ASAN_OPTIONS=halt_on_error=1
+export UBSAN_OPTIONS=halt_on_error=1
+build/qjs tests/test_file.js
+```
+
+### Valgrind
+
+Run tests under Valgrind for memory debugging:
+
+```bash
+valgrind --leak-check=full build/qjs tests/test_file.js
+```
+
+QuickJS-ng has a dedicated Valgrind CI workflow for automated memory leak detection.
+
+## Performance Testing
+
+### View Engine Statistics
+
+```bash
+make stats
+```
+
+This shows memory usage and allocation statistics.
+
+### Benchmark Suite
+
+Run the microbenchmark suite:
+
+```bash
+make microbench
+```
+
+The benchmarks test:
+- Arithmetic operations
+- Function calls
+- Object creation
+- Array operations
+- String manipulation
+- Regular expressions
+
+## Best Practices
+
+- Always run `make test` before submitting pull requests
+- Run test262 for changes affecting ECMAScript compliance
+- Test on multiple platforms when making platform-specific changes
+- Use sanitizers during development to catch memory errors early
+- Add tests for bug fixes to prevent regressions
+- Add tests for new features to ensure they work correctly
+- Update test262 results when implementing new ECMAScript features

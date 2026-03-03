@@ -1,0 +1,94 @@
+---
+title: Differences from Original QuickJS
+description: How QuickJS-ng differs from bellard/quickjs
+---
+
+# Differences from Original QuickJS
+
+QuickJS-ng is a fork of the [original QuickJS project](https://bellard.org/quickjs) by Fabrice Bellard and Charlie Gordon. This project aims to be a drop-in replacement for those already using QuickJS, though minimal API changes might be necessary.
+
+## Community Development
+
+NG is developed in the open, interacting with the wider community and through these interactions many improvements have already been made, including the incorporation of patches previously maintained in other forks.
+
+Each PR is reviewed, iterated on, and merged in GitHub.
+
+**Community Impact:**
+- Over 40 distinct contributors
+- Over 400 merged PRs
+- Active issue tracking and discussion
+
+## Consistent Release Cadence
+
+As the project moves forward, a steady cadence of releases has been maintained, with an average of a new release every 2 months. This ensures:
+
+- Regular bug fixes and improvements
+- Predictable update schedule for downstream projects
+- Timely integration of new ECMAScript features
+
+## Testing
+
+Since its inception, testing has been a focus. Each PR is tested in over 50 configurations, involving different operating systems, build types and sanitizers.
+
+**Testing Infrastructure:**
+- 50+ test configurations per PR
+- Multiple operating systems (Linux, macOS, Windows)
+- Various build types and sanitizers
+- Complete Test262 suite runs for every change
+
+## Cross-Platform Support
+
+In order to better support other platforms such as Windows, the build system was changed to use [CMake](https://cmake.org/).
+
+Windows is treated as a first-class citizen, with the addition of support for the MSVC compiler.
+
+**Supported Platforms:**
+- Linux (all major distributions)
+- macOS (x86_64 and ARM64)
+- Windows (MSVC and MinGW)
+- BSD variants
+- Other POSIX-compliant systems
+
+## Performance
+
+While being an interpreter limits the performance in comparison with other engines which use a JIT, several significant performance improvements have been made:
+
+<CardGroup cols={2}>
+  <Card title="Opcode Fusion" icon="code-merge">
+    Combining multiple bytecode operations into single optimized instructions
+  </Card>
+  <Card title="Polymorphic Inline Caching" icon="gauge-high">
+    Faster property access through inline caching techniques
+  </Card>
+  <Card title="Memory Allocation" icon="memory">
+    Improved memory allocation strategies for better performance
+  </Card>
+  <Card title="Parse Speed" icon="bolt">
+    Enhanced parser performance for faster script loading
+  </Card>
+</CardGroup>
+
+## New ECMAScript APIs
+
+The main focus of NG is to deliver state-of-the-art JavaScript features. Here is a non-exhaustive list of ES features present in NG:
+
+### Core Features
+- **Resizable ArrayBuffer** - Dynamic buffer resizing
+- **Float16Array** - Half-precision floating point arrays
+- **WeakRef** - Weak references to objects
+- **FinalizationRegistry** - Object lifecycle callbacks
+- **Iterator Helpers** - Convenient iterator methods
+- **Promise.try** - Promise wrapping utility
+- **Error.isError** - Error detection utility
+- **Set operations** - Mathematical set methods
+
+### V8 Compatibility
+
+Some non-standard but widely used APIs have also been added:
+
+- **[V8's stack trace API](https://v8.dev/docs/stack-trace-api)**
+  - `Error.captureStackTrace`
+  - `Error.prepareStackTrace`
+  - `Error.stackTraceLimit`
+
+These additions improve compatibility with code written for Node.js and other V8-based environments.

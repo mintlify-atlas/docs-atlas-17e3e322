@@ -1,0 +1,172 @@
+---
+title: Constructor Functions
+description: Call JavaScript constructors from C code
+---
+
+# Constructor Functions
+
+QuickJS provides functions to invoke JavaScript constructors from C code.
+
+## JS_CallConstructor
+
+Call a JavaScript constructor to create a new object.
+
+```c
+JSValue JS_CallConstructor(JSContext *ctx, JSValueConst func_obj,
+                          int argc, JSValueConst *argv);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `func_obj` - The constructor function to call
+- `argc` - Number of arguments to pass to the constructor
+- `argv` - Array of argument values
+
+### Returns
+
+Returns the newly created object, or `JS_EXCEPTION` on error.
+
+### Example
+
+```c
+// Call: new Date(2024, 0, 1)
+JSValue date_ctor = JS_GetPropertyStr(ctx, global, "Date");
+
+JSValue args[3];
+args[0] = JS_NewInt32(ctx, 2024);
+args[1] = JS_NewInt32(ctx, 0);
+args[2] = JS_NewInt32(ctx, 1);
+
+JSValue date_obj = JS_CallConstructor(ctx, date_ctor, 3, args);
+if (JS_IsException(date_obj)) {
+    js_std_dump_error(ctx);
+}
+
+JS_FreeValue(ctx, date_obj);
+JS_FreeValue(ctx, args[0]);
+JS_FreeValue(ctx, args[1]);
+JS_FreeValue(ctx, args[2]);
+JS_FreeValue(ctx, date_ctor);
+```
+
+## JS_CallConstructor2
+
+Call a JavaScript constructor with explicit `new.target` support.
+
+```c
+JSValue JS_CallConstructor2(JSContext *ctx, JSValueConst func_obj,
+                           JSValueConst new_target,
+                           int argc, JSValueConst *argv);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `func_obj` - The constructor function to call
+- `new_target` - The `new.target` value (used for class inheritance)
+- `argc` - Number of arguments
+- `argv` - Array of argument values
+
+### Returns
+
+Returns the newly created object, or `JS_EXCEPTION` on error.
+
+### Example from point.c
+
+```c
+static JSValue js_point_ctor(JSContext *ctx,
+                             JSValue new_target,
+                             int argc, JSValue *argv)
+{
+    JSPointData *s;
+    JSValue obj = JS_UNDEFINED;
+    JSValue proto;
+
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s)
+        return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &s->x, argv[0]))
+        goto fail;
+    if (JS_ToInt32(ctx, &s->y, argv[1]))
+        goto fail;
+    
+    /* using new_target to get the prototype is necessary when the
+       class is extended. */
+    proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto))
+        goto fail;
+    obj = JS_NewObjectProtoClass(ctx, proto, js_point_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj))
+        goto fail;
+    JS_SetOpaque(obj, s);
+    return obj;
+ fail:
+    js_free(ctx, s);
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
+}
+```
+
+## Creating Constructor Functions
+
+### JS_SetConstructorBit
+
+Mark a function as a constructor.
+
+```c
+bool JS_SetConstructorBit(JSContext *ctx, JSValueConst func_obj, bool val);
+```
+
+### JS_SetConstructor
+
+Set up the bidirectional link between a constructor and its prototype.
+
+```c
+void JS_SetConstructor(JSContext *ctx, JSValueConst func_obj,
+                      JSValueConst proto);
+```
+
+### Example
+
+From `examples/point.c`:
+
+```c
+JSValue point_proto = JS_NewObject(ctx);
+JS_SetPropertyFunctionList(ctx, point_proto, js_point_proto_funcs,
+                          countof(js_point_proto_funcs));
+
+JSValue point_class = JS_NewCFunction2(ctx, js_point_ctor, "Point", 2,
+                                       JS_CFUNC_constructor, 0);
+/* set proto.constructor and ctor.prototype */
+JS_SetConstructor(ctx, point_class, point_proto);
+JS_SetClassProto(ctx, js_point_class_id, point_proto);
+```
+
+## Checking Constructor Functions
+
+### JS_IsConstructor
+
+Check if a value is a constructor function.
+
+```c
+bool JS_IsConstructor(JSContext* ctx, JSValueConst val);
+```
+
+### Example
+
+```c
+JSValue func = JS_GetPropertyStr(ctx, global, "MyClass");
+if (JS_IsConstructor(ctx, func)) {
+    printf("MyClass is a constructor\n");
+}
+JS_FreeValue(ctx, func);
+```
+
+## Notes
+
+- `new.target` is essential for proper class inheritance in ES6 classes
+- When creating custom constructors, always use `new_target` to get the prototype
+- Constructor functions should return the newly created object
+- The `JS_CALL_FLAG_CONSTRUCTOR` flag is set when a function is called as a constructor

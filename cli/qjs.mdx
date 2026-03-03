@@ -1,0 +1,344 @@
+---
+title: qjs - QuickJS Interpreter
+description: Command-line reference for the qjs JavaScript interpreter with REPL support
+---
+
+# qjs - QuickJS Interpreter
+
+The `qjs` executable is the QuickJS JavaScript interpreter. It includes a simple standard library and an interactive REPL (Read-Eval-Print Loop).
+
+## Basic Usage
+
+```bash
+qjs [options] [file [args]]
+```
+
+### Running JavaScript Files
+
+<CodeGroup>
+```bash Classic Script
+# Run a JavaScript file (auto-detected as script)
+qjs script.js
+```
+
+```bash ES Module
+# Run an ES module
+qjs module.mjs
+
+# Or explicitly specify module mode
+qjs --module app.js
+```
+
+```bash With Arguments
+# Pass arguments to the script
+qjs app.js arg1 arg2 arg3
+```
+</CodeGroup>
+
+### Interactive REPL
+
+```bash
+# Start interactive mode
+qjs
+
+# Or explicitly request interactive mode
+qjs -i
+qjs --interactive
+```
+
+### Evaluate Expressions
+
+```bash
+# Evaluate a single expression
+qjs -e "console.log('Hello World')"
+
+# Evaluate and enter interactive mode
+qjs -e "const x = 42" -i
+```
+
+## Command-Line Options
+
+### General Options
+
+<ParamField path="-h, --help" type="flag">
+  Display help information and list all available options
+</ParamField>
+
+<ParamField path="-e, --eval EXPR" type="string">
+  Evaluate the given expression and exit
+  
+  ```bash
+  qjs -e "console.log(Math.PI)"
+  ```
+</ParamField>
+
+<ParamField path="-i, --interactive" type="flag">
+  Enter interactive REPL mode after running scripts or expressions
+  
+  ```bash
+  qjs -e "const greeting = 'Hi'" -i
+  ```
+</ParamField>
+
+<ParamField path="-q, --quit" type="flag">
+  Instantiate the interpreter and quit immediately (useful for testing)
+</ParamField>
+
+### Module Loading
+
+<ParamField path="-m, --module" type="flag">
+  Load the file as an ES6 module (default=autodetect)
+  
+  ```bash
+  qjs --module app.js
+  ```
+</ParamField>
+
+<ParamField path="-C, --script" type="flag">
+  Load the file as a classic JavaScript script (default=autodetect)
+  
+  ```bash
+  qjs --script legacy.js
+  ```
+</ParamField>
+
+<Note>
+  By default, `qjs` automatically detects whether to load a file as a module or script based on:
+  - File extension (`.mjs` files are modules)
+  - Content analysis (presence of `import`/`export` statements)
+</Note>
+
+<ParamField path="-I, --include FILE" type="string">
+  Include an additional file before running the main script
+  
+  ```bash
+  qjs --include polyfills.js --include helpers.js main.js
+  ```
+</ParamField>
+
+<ParamField path="--std" type="flag">
+  Make the `std`, `os`, and `bjson` modules available globally to the script
+  
+  ```bash
+  qjs --std script.js
+  ```
+  
+  This makes the modules accessible without imports:
+  ```javascript
+  // Available when using --std flag
+  std.printf("Hello %s\n", "World");
+  const file = std.open("data.txt", "r");
+  ```
+</ParamField>
+
+### Memory and Performance
+
+<ParamField path="--memory-limit N" type="string">
+  Limit memory usage to N kilobytes (supports b, k, m, g suffixes)
+  
+  ```bash
+  # Limit to 10 megabytes
+  qjs --memory-limit 10m script.js
+  
+  # Limit to 512 kilobytes
+  qjs --memory-limit 512k script.js
+  ```
+</ParamField>
+
+<ParamField path="--stack-size N" type="string">
+  Limit stack size to N kilobytes (supports b, k, m, g suffixes)
+  
+  ```bash
+  # Set stack size to 1 megabyte
+  qjs --stack-size 1m script.js
+  ```
+</ParamField>
+
+<Warning>
+  Setting memory or stack limits too low may cause scripts to fail with out-of-memory errors.
+</Warning>
+
+### Debugging and Diagnostics
+
+<ParamField path="-T, --trace" type="flag">
+  Enable memory allocation tracing for debugging memory issues
+  
+  ```bash
+  qjs --trace script.js
+  ```
+</ParamField>
+
+<ParamField path="-d, --dump" type="flag">
+  Dump memory usage statistics when the runtime exits
+  
+  ```bash
+  qjs --dump script.js
+  ```
+</ParamField>
+
+<ParamField path="-D, --dump-flags FLAGS" type="hex">
+  Set debug dump flags (hexadecimal value). See [Dump Flags](#dump-flags) below.
+  
+  ```bash
+  # Dump bytecode and GC info
+  qjs --dump-flags 0x401 script.js
+  ```
+</ParamField>
+
+### Compilation Options
+
+<ParamField path="-c, --compile FILE" type="string">
+  Compile the JavaScript file into a standalone executable
+  
+  Must be used with `-o` to specify the output file.
+  
+  ```bash
+  qjs -c app.js -o app
+  ```
+</ParamField>
+
+<ParamField path="-o, --out FILE" type="string">
+  Specify the output filename for standalone executables
+  
+  ```bash
+  qjs -c app.js -o myapp
+  ```
+</ParamField>
+
+<ParamField path="--exe FILE" type="string">
+  Select the executable to use as the base for standalone builds (defaults to current qjs)
+  
+  ```bash
+  qjs -c app.js -o app --exe /usr/bin/qjs
+  ```
+</ParamField>
+
+## Dump Flags
+
+The `--dump-flags` option accepts a hexadecimal value combining these flags:
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `DUMP_BYTECODE_FINAL` | `0x00001` | Dump pass 3 final bytecode |
+| `DUMP_BYTECODE_PASS2` | `0x00002` | Dump pass 2 code |
+| `DUMP_BYTECODE_PASS1` | `0x00004` | Dump pass 1 code |
+| `DUMP_BYTECODE_HEX` | `0x00010` | Dump bytecode in hexadecimal |
+| `DUMP_BYTECODE_PC2LINE` | `0x00020` | Dump line number table |
+| `DUMP_BYTECODE_STACK` | `0x00040` | Dump compute_stack_size |
+| `DUMP_BYTECODE_STEP` | `0x00080` | Dump executed bytecode |
+| `DUMP_READ_OBJECT` | `0x00100` | Dump marshalled objects at load time |
+| `DUMP_FREE` | `0x00200` | Dump every object free |
+| `DUMP_GC` | `0x00400` | Dump automatic GC occurrences |
+| `DUMP_GC_FREE` | `0x00800` | Dump objects freed by GC |
+| `DUMP_MODULE_RESOLVE` | `0x01000` | Dump module resolution steps |
+| `DUMP_PROMISE` | `0x02000` | Dump promise steps |
+| `DUMP_LEAKS` | `0x04000` | Dump leaked objects and strings in JS_FreeRuntime |
+| `DUMP_ATOM_LEAKS` | `0x08000` | Dump leaked atoms in JS_FreeRuntime |
+| `DUMP_MEM` | `0x10000` | Dump memory usage in JS_FreeRuntime |
+| `DUMP_OBJECTS` | `0x20000` | Dump objects in JS_FreeRuntime |
+| `DUMP_ATOMS` | `0x40000` | Dump atoms in JS_FreeRuntime |
+| `DUMP_SHAPES` | `0x80000` | Dump shapes in JS_FreeRuntime |
+
+### Example: Debugging Memory Leaks
+
+```bash
+# Dump leaked objects and memory usage
+qjs --dump-flags 0x14000 script.js
+
+# Dump all GC activity
+qjs --dump-flags 0xC00 script.js
+```
+
+## Environment Variables
+
+<ParamField path="QJS_DUMP_FLAGS" type="hex">
+  Set default dump flags via environment variable
+  
+  ```bash
+  export QJS_DUMP_FLAGS=0x400
+  qjs script.js  # Will dump GC activity
+  ```
+</ParamField>
+
+## Global Objects
+
+The `qjs` interpreter adds several global objects to the JavaScript environment:
+
+### `execArgv`
+
+Array containing all command-line arguments:
+
+```javascript
+// When run as: qjs script.js arg1 arg2
+console.log(execArgv);  // ['script.js', 'arg1', 'arg2']
+```
+
+### `argv0`
+
+The first command-line argument (typically the script name):
+
+```javascript
+console.log(argv0);  // 'script.js'
+```
+
+### `navigator.userAgent`
+
+Contains the QuickJS-ng version string:
+
+```javascript
+console.log(navigator.userAgent);  // 'quickjs-ng/0.7.0'
+```
+
+### `gc()`
+
+Manually trigger garbage collection:
+
+```javascript
+gc();  // Run garbage collector
+```
+
+## Examples
+
+### Run a Simple Script
+
+```bash
+qjs -e "console.log('Hello World')"
+```
+
+### Run with Standard Library
+
+```bash
+qjs --std -e "std.printf('PI = %.2f\\n', Math.PI)"
+```
+
+### Debug Memory Usage
+
+```bash
+qjs --trace --dump script.js
+```
+
+### Interactive REPL with Preloaded Code
+
+```bash
+qjs --include lib.js --include utils.js -i
+```
+
+### Compile to Standalone Executable
+
+```bash
+qjs -c myapp.js -o myapp
+./myapp  # Run the standalone executable
+```
+
+See [Creating Standalone Executables](./standalone-executables) for more details on compilation.
+
+## Exit Codes
+
+- `0` - Success
+- `1` - Script execution error or compilation failure
+- `2` - Runtime/context allocation failure
+
+## See Also
+
+- [qjsc](./qjsc) - QuickJS compiler for generating C code
+- [Creating Standalone Executables](./standalone-executables) - Guide to creating standalone binaries

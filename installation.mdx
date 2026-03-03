@@ -1,0 +1,251 @@
+---
+title: Installation
+description: Install QuickJS using prebuilt binaries or package managers
+---
+
+# Installation
+
+QuickJS-ng can be installed in several ways. Choose the method that best fits your workflow.
+
+## Prebuilt Binaries
+
+The easiest way to get started is with prebuilt binaries from GitHub releases.
+
+<Steps>
+  <Step title="Download the binary">
+    Visit the [GitHub Releases page](https://github.com/quickjs-ng/quickjs/releases) and download the binary for your platform:
+
+    - Linux (x86_64, ARM64)
+    - macOS (x86_64, ARM64)
+    - Windows (x86_64)
+  </Step>
+
+  <Step title="Extract and install">
+    <CodeGroup>
+    ```bash Linux/macOS
+    # Extract the archive
+    tar -xzf quickjs-*.tar.gz
+    
+    # Move binaries to your PATH
+    sudo mv qjs qjsc /usr/local/bin/
+    
+    # Verify installation
+    qjs --help
+    ```
+
+    ```powershell Windows
+    # Extract the archive
+    # Move qjs.exe and qjsc.exe to a directory in your PATH
+    
+    # Verify installation
+    qjs.exe --help
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+<Note>
+  Each release includes binaries for multiple architectures. Make sure to download the one matching your system.
+</Note>
+
+## Using jsvu
+
+As of version 2.2.0, [jsvu](https://github.com/GoogleChromeLabs/jsvu) (JavaScript Version Updater) installs QuickJS-ng when the `quickjs` engine is requested.
+
+<Steps>
+  <Step title="Install jsvu">
+    ```bash
+    npm install jsvu -g
+    ```
+  </Step>
+
+  <Step title="Install QuickJS">
+    ```bash
+    jsvu --engines=quickjs
+    ```
+  </Step>
+
+  <Step title="Add to PATH">
+    Follow the instructions from jsvu to add the binary to your PATH, or run it directly:
+
+    ```bash
+    ~/.jsvu/quickjs
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  jsvu makes it easy to install and manage multiple JavaScript engines for testing and comparison.
+</Tip>
+
+## Building from Source
+
+For the latest features or custom builds, you can compile QuickJS from source.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/quickjs-ng/quickjs.git
+    cd quickjs
+    ```
+  </Step>
+
+  <Step title="Build QuickJS">
+    <CodeGroup>
+    ```bash Linux/macOS
+    make
+    ```
+
+    ```bash Windows
+    # Use CMake directly
+    cmake -B build
+    cmake --build build
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Install system-wide">
+    ```bash
+    sudo make install
+    ```
+
+    By default, this installs to `/usr/local`. You can customize the installation prefix:
+
+    ```bash
+    make install INSTALL_PREFIX=/custom/path
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  See the [Building guide](/building) for detailed build instructions, including debug builds and amalgamated builds.
+</Note>
+
+## Amalgamated Build
+
+For projects that want to embed QuickJS without CMake, download the amalgamated build from the [Releases page](https://github.com/quickjs-ng/quickjs/releases).
+
+```bash
+# Download quickjs-amalgam.zip from releases
+wget https://github.com/quickjs-ng/quickjs/releases/latest/download/quickjs-amalgam.zip
+unzip quickjs-amalgam.zip
+```
+
+The amalgamated build contains:
+- `quickjs-amalgam.c` - Single source file with all QuickJS code
+- `quickjs.h` - Main header file
+- `quickjs-libc.h` - Standard library header
+
+### Compiling the Amalgamated Build
+
+```bash
+# Basic compilation
+gcc -c quickjs-amalgam.c -o quickjs.o
+
+# With standard library modules (std, os, bjson)
+gcc -c quickjs-amalgam.c -DQJS_BUILD_LIBC -o quickjs.o
+
+# Link with your application
+gcc your_app.c quickjs.o -lm -lpthread -o your_app
+```
+
+<Tip>
+  The amalgamated build is perfect for integrating QuickJS into existing projects without adding build system complexity.
+</Tip>
+
+## Verifying Installation
+
+After installation, verify that QuickJS is working:
+
+<CodeGroup>
+```bash Check version
+qjs --help
+```
+
+```bash Run a simple script
+echo 'console.log("Hello, QuickJS!")' | qjs
+```
+
+```bash Interactive REPL
+qjs
+# Type: 1 + 1
+# Press Ctrl+D to exit
+```
+</CodeGroup>
+
+## What's Included
+
+A complete QuickJS installation includes:
+
+- `qjs` - The QuickJS interpreter and REPL
+- `qjsc` - The QuickJS compiler (JavaScript to C)
+- `libquickjs.a` or `libquickjs.so` - Static or shared library
+- Header files: `quickjs.h`, `quickjs-libc.h`
+
+## System Requirements
+
+<CardGroup cols={2}>
+  <Card title="Linux" icon="linux">
+    - GCC 7+ or Clang 6+
+    - CMake 3.10+
+    - GNU Make
+    - POSIX environment
+  </Card>
+  <Card title="macOS" icon="apple">
+    - Xcode Command Line Tools
+    - CMake 3.10+
+    - GNU Make (included)
+  </Card>
+  <Card title="Windows" icon="windows">
+    - MSVC 2017+ or MinGW-w64
+    - CMake 3.10+
+  </Card>
+  <Card title="Embedded" icon="microchip">
+    - C11 compiler
+    - Minimal libc
+    - ~200KB footprint
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<Warning>
+  **Windows Users**: The Makefile wrapper is not available on Windows. You must use CMake commands directly.
+</Warning>
+
+### Common Issues
+
+**Command not found**
+
+If `qjs` is not found after installation, make sure the installation directory is in your PATH:
+
+```bash
+export PATH=/usr/local/bin:$PATH
+```
+
+**Permission denied**
+
+If you get permission errors during installation, use `sudo`:
+
+```bash
+sudo make install
+```
+
+**Library not found**
+
+If you get linker errors about missing libraries, update your library path:
+
+```bash
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Run your first QuickJS program
+  </Card>
+  <Card title="Building Guide" icon="hammer" href="/building">
+    Learn about build options and customization
+  </Card>
+</CardGroup>

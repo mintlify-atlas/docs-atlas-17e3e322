@@ -1,0 +1,359 @@
+---
+title: Error handling
+description: Exception handling patterns in QuickJS
+---
+
+## Overview
+
+QuickJS uses an exception-based error handling model similar to JavaScript itself. Most C API functions can throw exceptions, which must be explicitly tested and handled.
+
+## Exception mechanism
+
+When a C function encounters an error, it:
+
+1. Creates an exception object in the context
+2. Returns the special value `JS_EXCEPTION`
+3. Stores the actual exception for later retrieval
+
+```c
+JSValue result = JS_Eval(ctx, code, len, "<eval>", JS_EVAL_TYPE_GLOBAL);
+
+if (JS_IsException(result)) {
+    // An exception occurred
+    JSValue exception = JS_GetException(ctx);
+    // Handle the exception...
+    JS_FreeValue(ctx, exception);
+}
+
+JS_FreeValue(ctx, result);
+```
+
+## Checking for exceptions
+
+### Using JS_IsException
+
+The recommended way to check for exceptions:
+
+```c
+JSValue result = JS_Eval(ctx, "throw new Error('oops');", 25, 
+                         "<input>", JS_EVAL_TYPE_GLOBAL);
+
+if (JS_IsException(result)) {
+    fprintf(stderr, "Exception occurred\n");
+    JSValue ex = JS_GetException(ctx);
+    // Handle exception
+    JS_FreeValue(ctx, ex);
+}
+
+JS_FreeValue(ctx, result);
+```
+
+### Using JS_HasException
+
+Check if an exception is pending without getting a result:
+
+```c
+if (JS_HasException(ctx)) {
+    JSValue ex = JS_GetException(ctx);
+    // Handle exception
+    JS_FreeValue(ctx, ex);
+}
+```
+
+## Getting exception details
+
+### Converting to string
+
+```c
+if (JS_IsException(result)) {
+    JSValue exception = JS_GetException(ctx);
+    
+    // Convert to string
+    const char *str = JS_ToCString(ctx, exception);
+    if (str) {
+        fprintf(stderr, "Error: %s\n", str);
+        JS_FreeCString(ctx, str);
+    }
+    
+    JS_FreeValue(ctx, exception);
+}
+```
+
+### Extracting stack trace
+
+```c
+void print_exception(JSContext *ctx, JSValue exception) {
+    // Get error message
+    const char *msg = JS_ToCString(ctx, exception);
+    fprintf(stderr, "Error: %s\n", msg ? msg : "unknown");
+    JS_FreeCString(ctx, msg);
+    
+    // Try to get stack trace
+    JSValue stack = JS_GetPropertyStr(ctx, exception, "stack");
+    if (!JS_IsUndefined(stack)) {
+        const char *stack_str = JS_ToCString(ctx, stack);
+        if (stack_str) {
+            fprintf(stderr, "Stack:\n%s\n", stack_str);
+            JS_FreeCString(ctx, stack_str);
+        }
+    }
+    JS_FreeValue(ctx, stack);
+}
+
+// Usage
+JSValue result = JS_Eval(ctx, code, len, "<eval>", JS_EVAL_TYPE_GLOBAL);
+if (JS_IsException(result)) {
+    JSValue ex = JS_GetException(ctx);
+    print_exception(ctx, ex);
+    JS_FreeValue(ctx, ex);
+}
+JS_FreeValue(ctx, result);
+```
+
+### Checking error type
+
+```c
+if (JS_IsException(result)) {
+    JSValue ex = JS_GetException(ctx);
+    
+    // Check if it's an Error instance
+    if (JS_IsError(ex)) {
+        // Get error name (TypeError, RangeError, etc.)
+        JSValue name = JS_GetPropertyStr(ctx, ex, "name");
+        const char *name_str = JS_ToCString(ctx, name);
+        
+        if (name_str && strcmp(name_str, "TypeError") == 0) {
+            fprintf(stderr, "Type error occurred\n");
+        }
+        
+        JS_FreeCString(ctx, name_str);
+        JS_FreeValue(ctx, name);
+    }
+    
+    JS_FreeValue(ctx, ex);
+}
+```
+
+## Throwing exceptions from C
+
+### Using JS_Throw
+
+```c
+JSValue my_function(JSContext *ctx, JSValueConst this_val,
+                   int argc, JSValueConst *argv) {
+    if (argc < 1) {
+        return JS_ThrowTypeError(ctx, "expected at least 1 argument");
+    }
+    
+    // Normal processing...
+    return JS_NewInt32(ctx, 42);
+}
+```
+
+### Creating custom errors
+
+```c
+JSValue throw_custom_error(JSContext *ctx, const char *message) {
+    JSValue error = JS_NewError(ctx);
+    JS_SetPropertyStr(ctx, error, "message", 
+                     JS_NewString(ctx, message));
+    return JS_Throw(ctx, error);
+}
+
+// Usage in a C function
+JSValue my_function(JSContext *ctx, JSValueConst this_val,
+                   int argc, JSValueConst *argv) {
+    if (some_error_condition) {
+        return throw_custom_error(ctx, "Something went wrong");
+    }
+    return JS_UNDEFINED;
+}
+```
+
+### Built-in error constructors
+
+QuickJS provides convenience functions for standard error types:
+
+```c
+// TypeError
+return JS_ThrowTypeError(ctx, "expected a number, got %s", type_name);
+
+// RangeError  
+return JS_ThrowRangeError(ctx, "value %d out of range", value);
+
+// ReferenceError
+return JS_ThrowReferenceError(ctx, "variable '%s' not found", name);
+
+// SyntaxError
+return JS_ThrowSyntaxError(ctx, "unexpected token at position %d", pos);
+
+// InternalError
+return JS_ThrowInternalError(ctx, "assertion failed: %s", condition);
+
+// Out of memory
+return JS_ThrowOutOfMemory(ctx);
+```
+
+## Error propagation
+
+When calling JavaScript from C, exceptions propagate automatically:
+
+```c
+JSValue call_method(JSContext *ctx, JSValue obj, const char *method) {
+    JSValue func = JS_GetPropertyStr(ctx, obj, method);
+    if (JS_IsException(func)) {
+        return JS_EXCEPTION;  // Propagate the exception
+    }
+    
+    JSValue result = JS_Call(ctx, func, obj, 0, NULL);
+    JS_FreeValue(ctx, func);
+    
+    // If JS_Call threw an exception, result will be JS_EXCEPTION
+    return result;  // Propagate to caller
+}
+```
+
+## Cleanup on exception
+
+Always clean up resources when an exception occurs:
+
+```c
+JSValue create_and_initialize(JSContext *ctx) {
+    JSValue obj = JS_NewObject(ctx);
+    
+    // Set property - might throw
+    JSValue result = JS_Eval(ctx, "initializer()", 13, 
+                            "<init>", JS_EVAL_TYPE_GLOBAL);
+    
+    if (JS_IsException(result)) {
+        // Clean up before propagating
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    
+    // Store result in object - might throw
+    JS_SetPropertyStr(ctx, obj, "data", result);
+    
+    return obj;
+}
+```
+
+## Exception patterns
+
+### Pattern: Check every call
+
+```c
+JSValue process_user_data(JSContext *ctx, JSValue user_obj) {
+    // Get name - might throw
+    JSValue name = JS_GetPropertyStr(ctx, user_obj, "name");
+    if (JS_IsException(name)) {
+        return JS_EXCEPTION;
+    }
+    
+    // Convert to string - might throw  
+    const char *name_str = JS_ToCString(ctx, name);
+    JS_FreeValue(ctx, name);
+    if (!name_str) {
+        return JS_EXCEPTION;
+    }
+    
+    // Process name...
+    printf("Name: %s\n", name_str);
+    JS_FreeCString(ctx, name_str);
+    
+    return JS_UNDEFINED;
+}
+```
+
+### Pattern: Error context
+
+```c
+void report_error_with_context(JSContext *ctx, const char *operation) {
+    if (!JS_HasException(ctx)) {
+        return;
+    }
+    
+    JSValue ex = JS_GetException(ctx);
+    const char *msg = JS_ToCString(ctx, ex);
+    
+    fprintf(stderr, "Error during %s: %s\n", operation, msg ? msg : "unknown");
+    
+    JS_FreeCString(ctx, msg);
+    JS_FreeValue(ctx, ex);
+}
+
+// Usage
+JSValue result = JS_Eval(ctx, code, len, filename, JS_EVAL_TYPE_GLOBAL);
+if (JS_IsException(result)) {
+    report_error_with_context(ctx, "script evaluation");
+}
+JS_FreeValue(ctx, result);
+```
+
+### Pattern: Try-catch equivalent
+
+```c
+JSValue try_operation(JSContext *ctx) {
+    // Try the operation
+    JSValue result = JS_Eval(ctx, risky_code, len, "<try>", JS_EVAL_TYPE_GLOBAL);
+    
+    if (JS_IsException(result)) {
+        // Catch the exception
+        JSValue ex = JS_GetException(ctx);
+        
+        const char *msg = JS_ToCString(ctx, ex);
+        fprintf(stderr, "Caught exception: %s\n", msg ? msg : "unknown");
+        JS_FreeCString(ctx, msg);
+        JS_FreeValue(ctx, ex);
+        
+        // Return a default value
+        return JS_NULL;
+    }
+    
+    return result;
+}
+```
+
+## Uncatchable errors
+
+Some errors are marked as "uncatchable" and will terminate execution:
+
+```c
+// Mark an error as uncatchable
+JS_SetUncatchableError(ctx, exception);
+
+// Check if an error is uncatchable
+if (JS_IsUncatchableError(exception)) {
+    // This will terminate the script
+}
+
+// Clear uncatchable flag
+JS_ClearUncatchableError(ctx, exception);
+
+// Reset all uncatchable errors
+JS_ResetUncatchableError(ctx);
+```
+
+## Best practices
+
+<Tip>
+**Always check for exceptions** after calling any function that can throw. The QuickJS API makes no guarantees about the state if you ignore exceptions.
+</Tip>
+
+<Tip>
+**Clean up resources** on exception paths. Use the same cleanup code whether the operation succeeds or fails.
+</Tip>
+
+<Warning>
+**Don't ignore JS_EXCEPTION** - Continuing execution after receiving `JS_EXCEPTION` leads to undefined behavior.
+</Warning>
+
+<Warning>
+**Free exception objects** - The value returned by `JS_GetException()` must be freed with `JS_FreeValue()`.
+</Warning>
+
+## See also
+
+- [Exception throwing API](/api/exceptions/throwing) - Throwing exceptions from C
+- [Exception catching API](/api/exceptions/catching) - Catching and inspecting exceptions
+- [Error types](/api/exceptions/error-types) - Standard error constructors

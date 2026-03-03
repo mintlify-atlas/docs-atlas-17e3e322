@@ -1,0 +1,422 @@
+---
+title: qjs:bjson Module
+description: Binary JSON serialization using QuickJS internal format
+---
+
+The `qjs:bjson` module provides functions to serialize and deserialize JavaScript values using QuickJS's internal binary format. This is useful for:
+
+- Saving and loading program state
+- Inter-process communication with QuickJS applications
+- Caching compiled bytecode
+- Storing complex data structures efficiently
+
+```javascript
+import * as bjson from 'qjs:bjson';
+```
+
+<Warning>
+The binary JSON format is specific to QuickJS and is not compatible with other JSON serialization formats. It should only be used for communication between QuickJS instances or for QuickJS-specific storage.
+</Warning>
+
+## Serialization
+
+### `bjson.write(obj, flags)`
+
+Serializes a JavaScript value into the QuickJS internal binary format.
+
+<ParamField path="obj" type="any" required>
+  The value to serialize. Can be any JavaScript value including objects, arrays, functions, and modules (with appropriate flags).
+</ParamField>
+
+<ParamField path="flags" type="number">
+  Optional bitwise OR of serialization flags (see below)
+</ParamField>
+
+<ResponseField name="return" type="ArrayBuffer">
+  ArrayBuffer containing the serialized data
+</ResponseField>
+
+```javascript
+import * as bjson from 'qjs:bjson';
+import * as std from 'qjs:std';
+
+const data = {
+  name: 'example',
+  values: [1, 2, 3, 4, 5],
+  nested: { a: 1, b: 2 }
+};
+
+const serialized = bjson.write(data);
+std.writeFile('data.bjson', serialized);
+```
+
+### Write Flags
+
+Flags control what types of values can be serialized:
+
+#### `bjson.WRITE_OBJ_BYTECODE`
+
+Allows serializing functions and modules (including their bytecode).
+
+```javascript
+const func = function(x) { return x * 2; };
+const serialized = bjson.write(func, bjson.WRITE_OBJ_BYTECODE);
+```
+
+<Note>
+Function bytecode serialization allows you to save compiled code and reload it without re-parsing.
+</Note>
+
+#### `bjson.WRITE_OBJ_REFERENCE`
+
+Allows serializing object references, preserving object identity.
+
+```javascript
+const obj = { value: 1 };
+const data = {
+  first: obj,
+  second: obj  // Same reference
+};
+
+const serialized = bjson.write(data, bjson.WRITE_OBJ_REFERENCE);
+// When deserialized, data.first === data.second
+```
+
+<Accordion title="What are object references?">
+  Without `WRITE_OBJ_REFERENCE`, each occurrence of an object is serialized separately:
+  
+  ```javascript
+  const shared = { x: 1 };
+  const data = { a: shared, b: shared };
+  
+  // Without WRITE_OBJ_REFERENCE
+  const serialized1 = bjson.write(data);
+  const restored1 = bjson.read(serialized1);
+  console.log(restored1.a === restored1.b); // false (different objects)
+  
+  // With WRITE_OBJ_REFERENCE
+  const serialized2 = bjson.write(data, bjson.WRITE_OBJ_REFERENCE);
+  const restored2 = bjson.read(serialized2, 0, serialized2.byteLength, bjson.READ_OBJ_REFERENCE);
+  console.log(restored2.a === restored2.b); // true (same object)
+  ```
+</Accordion>
+
+#### `bjson.WRITE_OBJ_SAB`
+
+Allows serializing `SharedArrayBuffer` instances.
+
+```javascript
+const sab = new SharedArrayBuffer(1024);
+const data = { buffer: sab };
+
+const serialized = bjson.write(data, bjson.WRITE_OBJ_SAB);
+```
+
+<Note>
+`SharedArrayBuffer` is used for sharing memory between worker threads.
+</Note>
+
+#### `bjson.WRITE_OBJ_STRIP_DEBUG`
+
+Strips debug information when serializing bytecode, reducing size.
+
+```javascript
+const func = function example(x) { return x + 1; };
+const serialized = bjson.write(
+  func,
+  bjson.WRITE_OBJ_BYTECODE | bjson.WRITE_OBJ_STRIP_DEBUG
+);
+```
+
+<Accordion title="When should I strip debug info?">
+  Strip debug information when:
+  - You need smaller file sizes for production deployment
+  - Source code security is a concern
+  - Stack traces with line numbers are not needed
+  
+  Keep debug information when:
+  - You need meaningful error messages with line numbers
+  - You're debugging or developing
+</Accordion>
+
+#### `bjson.WRITE_OBJ_STRIP_SOURCE`
+
+Strips source code when serializing bytecode.
+
+```javascript
+const func = function() { return 42; };
+const serialized = bjson.write(
+  func,
+  bjson.WRITE_OBJ_BYTECODE | bjson.WRITE_OBJ_STRIP_SOURCE
+);
+```
+
+<Warning>
+Stripping source code prevents `Function.toString()` from returning the original source.
+</Warning>
+
+### Combining Flags
+
+Flags can be combined using bitwise OR:
+
+```javascript
+const flags = bjson.WRITE_OBJ_BYTECODE | 
+              bjson.WRITE_OBJ_REFERENCE | 
+              bjson.WRITE_OBJ_STRIP_DEBUG;
+
+const serialized = bjson.write(complexData, flags);
+```
+
+## Deserialization
+
+### `bjson.read(buf, pos, len, flags)`
+
+Deserializes data from the QuickJS binary format back into JavaScript values.
+
+<ParamField path="buf" type="ArrayBuffer" required>
+  ArrayBuffer containing serialized data
+</ParamField>
+
+<ParamField path="pos" type="number" default={0}>
+  Byte position to start reading from
+</ParamField>
+
+<ParamField path="len" type="number" default="buf.byteLength">
+  Number of bytes to read
+</ParamField>
+
+<ParamField path="flags" type="number">
+  Optional bitwise OR of deserialization flags (see below)
+</ParamField>
+
+<ResponseField name="return" type="any">
+  The deserialized JavaScript value
+</ResponseField>
+
+```javascript
+import * as bjson from 'qjs:bjson';
+import * as std from 'qjs:std';
+
+const buffer = std.loadFile('data.bjson', { binary: true });
+const data = bjson.read(buffer);
+
+console.log(data.name);
+console.log(data.values);
+```
+
+### Read Flags
+
+#### `bjson.READ_OBJ_BYTECODE`
+
+Allows deserializing functions and modules.
+
+```javascript
+const buffer = std.loadFile('function.bjson', { binary: true });
+const func = bjson.read(buffer, 0, buffer.byteLength, bjson.READ_OBJ_BYTECODE);
+
+const result = func(5);
+console.log(result);
+```
+
+<Warning>
+Only deserialize bytecode from trusted sources. Malicious bytecode could compromise security.
+</Warning>
+
+#### `bjson.READ_OBJ_REFERENCE`
+
+Allows deserializing object references.
+
+```javascript
+const serialized = bjson.write(data, bjson.WRITE_OBJ_REFERENCE);
+const restored = bjson.read(
+  serialized,
+  0,
+  serialized.byteLength,
+  bjson.READ_OBJ_REFERENCE
+);
+```
+
+<Note>
+Use the same flags for both `write()` and `read()` to ensure proper serialization and deserialization.
+</Note>
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Saving Application State">
+    ```javascript
+    import * as bjson from 'qjs:bjson';
+    import * as std from 'qjs:std';
+    
+    // Save state
+    const appState = {
+      user: { id: 123, name: 'Alice' },
+      settings: { theme: 'dark', language: 'en' },
+      data: [1, 2, 3, 4, 5]
+    };
+    
+    const serialized = bjson.write(appState);
+    std.writeFile('state.bjson', serialized);
+    
+    // Load state
+    const buffer = std.loadFile('state.bjson', { binary: true });
+    const restored = bjson.read(buffer);
+    console.log(restored.user.name); // 'Alice'
+    ```
+  </Accordion>
+  
+  <Accordion title="Bytecode Caching">
+    ```javascript
+    import * as bjson from 'qjs:bjson';
+    import * as std from 'qjs:std';
+    
+    const cacheFile = 'module.cache';
+    
+    // Try to load from cache
+    let module;
+    const cached = std.loadFile(cacheFile, { binary: true });
+    
+    if (cached) {
+      module = bjson.read(
+        cached,
+        0,
+        cached.byteLength,
+        bjson.READ_OBJ_BYTECODE
+      );
+      console.log('Loaded from cache');
+    } else {
+      // Compile and cache
+      const source = std.loadFile('module.js');
+      module = std.evalScript(source, {
+        compile_only: true,
+        compile_module: true
+      });
+      
+      const serialized = bjson.write(
+        module,
+        bjson.WRITE_OBJ_BYTECODE | bjson.WRITE_OBJ_STRIP_DEBUG
+      );
+      std.writeFile(cacheFile, serialized);
+      console.log('Compiled and cached');
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Worker Communication">
+    ```javascript
+    // main.js
+    import * as os from 'qjs:os';
+    import * as bjson from 'qjs:bjson';
+    
+    const worker = new os.Worker('worker.js');
+    
+    const complexData = {
+      array: new Uint8Array([1, 2, 3]),
+      nested: { a: { b: { c: 123 } } }
+    };
+    
+    const serialized = bjson.write(complexData);
+    worker.postMessage({ data: serialized });
+    
+    // worker.js
+    import * as os from 'qjs:os';
+    import * as bjson from 'qjs:bjson';
+    
+    os.Worker.parent.onmessage = (msg) => {
+      const data = bjson.read(msg.data.data);
+      console.log('Worker received:', data);
+    };
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Considerations
+
+<Accordion title="Binary JSON vs Regular JSON">
+  **Advantages of Binary JSON:**
+  - Preserves JavaScript types (Date, typed arrays, etc.)
+  - Handles circular references (with `WRITE_OBJ_REFERENCE`)
+  - Can serialize functions and bytecode
+  - Generally faster serialization/deserialization
+  - More compact for certain data types
+  
+  **Disadvantages:**
+  - QuickJS-specific format (not portable)
+  - Not human-readable
+  - Requires QuickJS to deserialize
+  
+  **When to use each:**
+  - Use **binary JSON** for QuickJS-to-QuickJS communication, state persistence, or bytecode caching
+  - Use **regular JSON** for interoperability with other systems, debugging, or configuration files
+</Accordion>
+
+## Security Considerations
+
+<Warning>
+**Never deserialize untrusted binary JSON data with `READ_OBJ_BYTECODE` flag.** Malicious bytecode can execute arbitrary code.
+</Warning>
+
+```javascript
+// UNSAFE - Don't do this with untrusted data!
+const untrustedData = receiveFromNetwork();
+const func = bjson.read(untrustedData, 0, untrustedData.byteLength, bjson.READ_OBJ_BYTECODE);
+func(); // Could execute malicious code
+
+// SAFE - Only deserialize data without bytecode from untrusted sources
+const safeData = bjson.read(untrustedData);
+```
+
+## Complete Example
+
+```javascript
+import * as bjson from 'qjs:bjson';
+import * as std from 'qjs:std';
+
+// Create complex data structure
+const sharedObj = { shared: true };
+const data = {
+  string: 'Hello',
+  number: 42,
+  bigint: 123n,
+  array: [1, 2, 3],
+  date: new Date(),
+  typed: new Uint8Array([1, 2, 3, 4]),
+  refs: [sharedObj, sharedObj],  // Same object referenced twice
+  func: function(x) { return x * 2; }
+};
+
+// Serialize with all features enabled
+const flags = bjson.WRITE_OBJ_BYTECODE | 
+              bjson.WRITE_OBJ_REFERENCE | 
+              bjson.WRITE_OBJ_SAB;
+
+const serialized = bjson.write(data, flags);
+std.writeFile('complete.bjson', serialized);
+
+console.log('Serialized size:', serialized.byteLength, 'bytes');
+
+// Deserialize
+const buffer = std.loadFile('complete.bjson', { binary: true });
+const readFlags = bjson.READ_OBJ_BYTECODE | bjson.READ_OBJ_REFERENCE;
+const restored = bjson.read(buffer, 0, buffer.byteLength, readFlags);
+
+// Verify
+console.log(restored.string); // 'Hello'
+console.log(restored.func(5)); // 10
+console.log(restored.refs[0] === restored.refs[1]); // true
+console.log(restored.date instanceof Date); // true
+```
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="std Module" icon="book" href="/stdlib/std-module">
+    Learn about file I/O for saving serialized data
+  </Card>
+  <Card title="os Module" icon="server" href="/stdlib/os-module">
+    Use with Workers for inter-thread communication
+  </Card>
+  <Card title="Overview" icon="arrow-left" href="/stdlib/overview">
+    Return to stdlib overview
+  </Card>
+</CardGroup>

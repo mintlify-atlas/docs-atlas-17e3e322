@@ -1,0 +1,233 @@
+---
+title: Property Operations
+description: Enumerate and inspect object properties
+---
+
+# Property Operations
+
+QuickJS provides APIs to enumerate object properties and work with property descriptors.
+
+## Property Enumeration
+
+### JS_GetOwnPropertyNames
+
+Get an array of an object's own property names.
+
+```c
+int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
+                          uint32_t *plen, JSValueConst obj,
+                          int flags);
+```
+
+#### Parameters
+
+- `ctx` - The JavaScript context
+- `ptab` - Pointer to receive the property array (must be freed with `JS_FreePropertyEnum()`)
+- `plen` - Pointer to receive the array length
+- `obj` - The object to enumerate
+- `flags` - Enumeration flags
+
+#### Enumeration Flags
+
+```c
+#define JS_GPN_STRING_MASK  (1 << 0)  /* include string properties */
+#define JS_GPN_SYMBOL_MASK  (1 << 1)  /* include symbol properties */
+#define JS_GPN_PRIVATE_MASK (1 << 2)  /* include private properties */
+#define JS_GPN_ENUM_ONLY    (1 << 4)  /* only enumerable properties */
+#define JS_GPN_SET_ENUM     (1 << 5)  /* set is_enumerable field */
+```
+
+#### Returns
+
+Returns 0 on success, -1 on error.
+
+#### Example
+
+```c
+JSPropertyEnum *props;
+uint32_t prop_count;
+
+if (JS_GetOwnPropertyNames(ctx, &props, &prop_count, obj,
+                           JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
+    for (uint32_t i = 0; i < prop_count; i++) {
+        const char *name = JS_AtomToCString(ctx, props[i].atom);
+        printf("Property: %s (enumerable: %d)\n", 
+               name, props[i].is_enumerable);
+        JS_FreeCString(ctx, name);
+    }
+    JS_FreePropertyEnum(ctx, props, prop_count);
+}
+```
+
+### JSPropertyEnum Structure
+
+```c
+typedef struct JSPropertyEnum {
+    bool is_enumerable;
+    JSAtom atom;
+} JSPropertyEnum;
+```
+
+### JS_FreePropertyEnum
+
+Free a property enumeration array.
+
+```c
+void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
+                        uint32_t len);
+```
+
+## Property Descriptors
+
+### JSPropertyDescriptor Structure
+
+```c
+typedef struct JSPropertyDescriptor {
+    int flags;
+    JSValue value;
+    JSValue getter;
+    JSValue setter;
+} JSPropertyDescriptor;
+```
+
+### Property Flags
+
+```c
+/* flags for object properties */
+#define JS_PROP_CONFIGURABLE  (1 << 0)
+#define JS_PROP_WRITABLE      (1 << 1)
+#define JS_PROP_ENUMERABLE    (1 << 2)
+#define JS_PROP_C_W_E         (JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE | JS_PROP_ENUMERABLE)
+
+/* flags for JS_DefineProperty */
+#define JS_PROP_HAS_CONFIGURABLE (1 << 8)
+#define JS_PROP_HAS_WRITABLE     (1 << 9)
+#define JS_PROP_HAS_ENUMERABLE   (1 << 10)
+#define JS_PROP_HAS_GET          (1 << 11)
+#define JS_PROP_HAS_SET          (1 << 12)
+#define JS_PROP_HAS_VALUE        (1 << 13)
+```
+
+### JS_GetOwnProperty
+
+Get the property descriptor for an own property.
+
+```c
+int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
+                     JSValueConst obj, JSAtom prop);
+```
+
+#### Parameters
+
+- `ctx` - The JavaScript context
+- `desc` - Pointer to receive the property descriptor
+- `obj` - The object
+- `prop` - The property name atom
+
+#### Returns
+
+Returns:
+- `1` if the property exists
+- `0` if the property doesn't exist
+- `-1` on error
+
+#### Example
+
+```c
+JSPropertyDescriptor desc;
+JSAtom prop = JS_NewAtom(ctx, "myProperty");
+
+int ret = JS_GetOwnProperty(ctx, &desc, obj, prop);
+if (ret == 1) {
+    printf("Property exists\n");
+    printf("Writable: %d\n", !!(desc.flags & JS_PROP_WRITABLE));
+    printf("Enumerable: %d\n", !!(desc.flags & JS_PROP_ENUMERABLE));
+    printf("Configurable: %d\n", !!(desc.flags & JS_PROP_CONFIGURABLE));
+    
+    if (!JS_IsUndefined(desc.value)) {
+        JS_FreeValue(ctx, desc.value);
+    }
+    if (!JS_IsUndefined(desc.getter)) {
+        JS_FreeValue(ctx, desc.getter);
+    }
+    if (!JS_IsUndefined(desc.setter)) {
+        JS_FreeValue(ctx, desc.setter);
+    }
+}
+JS_FreeAtom(ctx, prop);
+```
+
+## Defining Properties
+
+### JS_DefineProperty
+
+Define a property with full control over its attributes.
+
+```c
+int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
+                     JSAtom prop, JSValueConst val,
+                     JSValueConst getter, JSValueConst setter,
+                     int flags);
+```
+
+#### Example
+
+```c
+JSAtom prop = JS_NewAtom(ctx, "readOnly");
+JSValue value = JS_NewString(ctx, "cannot change");
+
+JS_DefineProperty(ctx, obj, prop, value, JS_UNDEFINED, JS_UNDEFINED,
+                 JS_PROP_HAS_VALUE | JS_PROP_HAS_ENUMERABLE | 
+                 JS_PROP_ENUMERABLE);
+
+JS_FreeAtom(ctx, prop);
+```
+
+### JS_DefinePropertyValue
+
+Define a simple data property.
+
+```c
+int JS_DefinePropertyValue(JSContext *ctx, JSValueConst this_obj,
+                          JSAtom prop, JSValue val, int flags);
+```
+
+### JS_DefinePropertyGetSet
+
+Define a property with getter and/or setter.
+
+```c
+int JS_DefinePropertyGetSet(JSContext *ctx, JSValueConst this_obj,
+                           JSAtom prop, JSValue getter, JSValue setter,
+                           int flags);
+```
+
+## Property Testing
+
+### JS_HasProperty
+
+Check if an object has a property (including inherited).
+
+```c
+int JS_HasProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
+```
+
+Returns 1 if the property exists, 0 if not, -1 on error.
+
+### Example
+
+```c
+JSAtom prop = JS_NewAtom(ctx, "toString");
+int has = JS_HasProperty(ctx, obj, prop);
+if (has == 1) {
+    printf("Object has toString property\n");
+}
+JS_FreeAtom(ctx, prop);
+```
+
+## Notes
+
+- Always free property enumeration arrays with `JS_FreePropertyEnum()`
+- Property descriptor values must be freed if they are not `JS_UNDEFINED`
+- Use `JS_GPN_ENUM_ONLY` to get only enumerable properties (like `Object.keys()`)
+- Combine flags with `|` to enumerate multiple types of properties

@@ -1,0 +1,368 @@
+---
+title: Garbage Collection
+description: Functions for managing garbage collection in QuickJS runtimes
+---
+
+# Garbage Collection
+
+QuickJS uses automatic garbage collection with configurable thresholds. These functions allow you to control and trigger garbage collection.
+
+## JS_RunGC
+
+Manually triggers garbage collection.
+
+```c
+void JS_RunGC(JSRuntime *rt);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to run garbage collection on.
+</ParamField>
+
+### Description
+
+Immediately runs a garbage collection cycle on the runtime. This will:
+- Mark all reachable objects
+- Free all unreachable objects
+- Call finalizers for freed objects
+- Reclaim memory
+
+Garbage collection normally runs automatically when memory allocation crosses the GC threshold. Manual triggering is useful for:
+- Freeing memory at strategic points (e.g., between requests)
+- Testing and debugging memory leaks
+- Ensuring cleanup before measuring memory usage
+- Controlling GC timing in performance-critical code
+
+<Note>
+Garbage collection is already automatic. You typically don't need to call this function unless you have specific timing or memory requirements.
+</Note>
+
+### Example
+
+```c
+#include <quickjs.h>
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // Run some JavaScript that creates temporary objects
+    JS_Eval(ctx, "for (let i = 0; i < 1000; i++) { let x = {data: new Array(100)}; }",
+            62, "<input>", JS_EVAL_TYPE_GLOBAL);
+    
+    // Manually trigger GC to free temporary objects
+    JS_RunGC(rt);
+    
+    // Check memory usage after GC
+    JSMemoryUsage stats;
+    JS_ComputeMemoryUsage(rt, &stats);
+    printf("Memory after GC: %lld bytes\n", (long long)stats.malloc_size);
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+### Example: Periodic GC
+
+```c
+// Run GC periodically in a server application
+#include <quickjs.h>
+#include <time.h>
+
+typedef struct {
+    JSRuntime *rt;
+    time_t last_gc;
+    int requests_since_gc;
+} ServerContext;
+
+void handle_request(ServerContext *server, const char *script) {
+    JSContext *ctx = JS_NewContext(server->rt);
+    
+    // Execute request
+    JS_Eval(ctx, script, strlen(script), "request", JS_EVAL_TYPE_GLOBAL);
+    
+    JS_FreeContext(ctx);
+    server->requests_since_gc++;
+    
+    // Run GC every 100 requests or every 60 seconds
+    time_t now = time(NULL);
+    if (server->requests_since_gc >= 100 || 
+        (now - server->last_gc) >= 60) {
+        JS_RunGC(server->rt);
+        server->last_gc = now;
+        server->requests_since_gc = 0;
+    }
+}
+```
+
+### Example: Debug Memory Leaks
+
+```c
+// Use GC to detect memory leaks
+void check_for_leaks(JSRuntime *rt) {
+    // Enable leak detection
+    JS_SetDumpFlags(rt, JS_DUMP_LEAKS | JS_DUMP_GC);
+    
+    // Run GC to collect unreferenced objects
+    JS_RunGC(rt);
+    
+    // GC will print leaked objects to stdout
+}
+```
+
+---
+
+## JS_SetGCThreshold
+
+Sets the garbage collection threshold.
+
+```c
+void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to configure.
+</ParamField>
+
+<ParamField path="gc_threshold" type="size_t" required>
+  Number of bytes to allocate before triggering automatic garbage collection.
+</ParamField>
+
+### Description
+
+Controls how frequently automatic garbage collection runs. When total allocated memory increases by `gc_threshold` bytes since the last GC, a new GC cycle is triggered.
+
+**Lower threshold:**
+- More frequent GC cycles
+- Lower peak memory usage
+- Higher CPU overhead
+- More predictable memory usage
+
+**Higher threshold:**
+- Less frequent GC cycles
+- Higher peak memory usage
+- Lower CPU overhead
+- Better performance for allocation-heavy code
+
+<Note>
+The default GC threshold is automatically set based on runtime characteristics. You typically only need to adjust this for performance tuning or memory-constrained environments.
+</Note>
+
+### Example
+
+```c
+#include <quickjs.h>
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Set GC to run every 256 KB of allocations
+    JS_SetGCThreshold(rt, 256 * 1024);
+    
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // This will trigger multiple GC cycles
+    const char *code = 
+        "let arrays = [];\n"
+        "for (let i = 0; i < 100; i++) {\n"
+        "  arrays.push(new Array(10000));\n"  // Allocates memory
+        "}";
+    
+    JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+### Example: Memory-Constrained Device
+
+```c
+// Configure for embedded system with limited memory
+JSRuntime *create_embedded_runtime(void) {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Set low memory limit
+    JS_SetMemoryLimit(rt, 2 * 1024 * 1024);  // 2 MB max
+    
+    // Set aggressive GC threshold (run GC every 128 KB)
+    JS_SetGCThreshold(rt, 128 * 1024);
+    
+    return rt;
+}
+```
+
+### Example: Performance Tuning
+
+```c
+// Configure for performance-critical application
+JSRuntime *create_performance_runtime(void) {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Set high memory limit
+    JS_SetMemoryLimit(rt, 512 * 1024 * 1024);  // 512 MB max
+    
+    // Set relaxed GC threshold (run GC every 10 MB)
+    JS_SetGCThreshold(rt, 10 * 1024 * 1024);
+    
+    return rt;
+}
+```
+
+---
+
+## JS_GetGCThreshold
+
+Retrieves the current garbage collection threshold.
+
+```c
+size_t JS_GetGCThreshold(JSRuntime *rt);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to query.
+</ParamField>
+
+### Returns
+
+<ResponseField name="threshold" type="size_t">
+  The current GC threshold in bytes.
+</ResponseField>
+
+### Description
+
+Returns the number of bytes that must be allocated before automatic garbage collection triggers.
+
+### Example
+
+```c
+#include <quickjs.h>
+
+void print_gc_config(JSRuntime *rt) {
+    size_t threshold = JS_GetGCThreshold(rt);
+    printf("GC threshold: %zu bytes (%.2f MB)\n",
+           threshold, threshold / 1024.0 / 1024.0);
+}
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Check default threshold
+    print_gc_config(rt);
+    
+    // Modify threshold
+    JS_SetGCThreshold(rt, 512 * 1024);
+    
+    // Verify new threshold
+    print_gc_config(rt);
+    
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+### Example: Adaptive GC
+
+```c
+// Adjust GC threshold based on memory pressure
+void adjust_gc_threshold(JSRuntime *rt) {
+    JSMemoryUsage stats;
+    JS_ComputeMemoryUsage(rt, &stats);
+    
+    size_t current_threshold = JS_GetGCThreshold(rt);
+    
+    // If we're using > 80% of our memory limit, make GC more aggressive
+    if (stats.malloc_size > stats.malloc_limit * 0.8) {
+        size_t new_threshold = current_threshold / 2;
+        JS_SetGCThreshold(rt, new_threshold);
+        printf("Memory pressure high, reducing GC threshold to %zu\n",
+               new_threshold);
+    }
+    // If we're using < 50% of our limit, relax GC frequency
+    else if (stats.malloc_size < stats.malloc_limit * 0.5) {
+        size_t new_threshold = current_threshold * 2;
+        JS_SetGCThreshold(rt, new_threshold);
+        printf("Memory pressure low, increasing GC threshold to %zu\n",
+               new_threshold);
+    }
+}
+```
+
+### Example: GC Statistics
+
+```c
+// Track GC behavior over time
+typedef struct {
+    size_t gc_count;
+    size_t total_freed;
+    double avg_gc_time;
+} GCStats;
+
+void log_gc_stats(JSRuntime *rt, GCStats *stats) {
+    printf("\nGC Statistics:\n");
+    printf("  Threshold: %zu bytes\n", JS_GetGCThreshold(rt));
+    printf("  Total GCs: %zu\n", stats->gc_count);
+    printf("  Avg GC time: %.2f ms\n", stats->avg_gc_time);
+    printf("  Total freed: %zu bytes\n", stats->total_freed);
+}
+```
+
+## Best Practices
+
+### When to Use Manual GC
+
+```c
+// Good: Between independent tasks
+void process_batch(JSRuntime *rt, const char **scripts, int count) {
+    for (int i = 0; i < count; i++) {
+        JSContext *ctx = JS_NewContext(rt);
+        JS_Eval(ctx, scripts[i], strlen(scripts[i]), "script", 
+                JS_EVAL_TYPE_GLOBAL);
+        JS_FreeContext(ctx);
+    }
+    
+    // Clean up after batch
+    JS_RunGC(rt);
+}
+
+// Bad: Too frequent manual GC
+void process_items(JSRuntime *rt, int count) {
+    for (int i = 0; i < count; i++) {
+        // Process item...
+        JS_RunGC(rt);  // Don't do this! Too frequent.
+    }
+}
+```
+
+### Memory-Constrained Configuration
+
+```c
+// Complete setup for embedded/constrained environment
+JSRuntime *create_constrained_runtime(void) {
+    JSRuntime *rt = JS_NewRuntime();
+    
+    // Strict memory limit
+    JS_SetMemoryLimit(rt, 4 * 1024 * 1024);  // 4 MB
+    
+    // Aggressive GC
+    JS_SetGCThreshold(rt, 256 * 1024);  // 256 KB
+    
+    // Enable GC debugging
+    JS_SetDumpFlags(rt, JS_DUMP_GC | JS_DUMP_GC_FREE);
+    
+    return rt;
+}
+```
+
+<Warning>
+Excessive manual GC calls can hurt performance. Let the automatic GC do its job unless you have specific requirements. Only call `JS_RunGC()` at strategic points like between requests or after freeing large data structures.
+</Warning>

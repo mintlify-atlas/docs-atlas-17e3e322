@@ -1,0 +1,361 @@
+---
+title: ES6 Modules
+description: Load and work with ES6 modules in QuickJS
+---
+
+# ES6 Modules
+
+QuickJS has full support for ES6 modules, including dynamic imports, import attributes, and custom module loaders.
+
+## Module Loader Functions
+
+### JS_SetModuleLoaderFunc
+
+Set the module loader for a runtime.
+
+```c
+void JS_SetModuleLoaderFunc(JSRuntime *rt,
+                           JSModuleNormalizeFunc *module_normalize,
+                           JSModuleLoaderFunc *module_loader, void *opaque);
+```
+
+#### Function Type Definitions
+
+```c
+// Return the module specifier (allocated with js_malloc()) or NULL if exception
+typedef char *JSModuleNormalizeFunc(JSContext *ctx,
+                                   const char *module_base_name,
+                                   const char *module_name, void *opaque);
+
+typedef JSModuleDef *JSModuleLoaderFunc(JSContext *ctx,
+                                       const char *module_name, void *opaque);
+```
+
+#### Parameters
+
+- `rt` - The JavaScript runtime
+- `module_normalize` - Function to normalize module names (can be `NULL` for default)
+- `module_loader` - Function to load modules
+- `opaque` - User data passed to loader functions
+
+### Example: Basic Module Loader
+
+From quickjs-libc:
+
+```c
+JSModuleDef *js_module_loader(JSContext *ctx,
+                             const char *module_name, void *opaque,
+                             JSValueConst attributes)
+{
+    JSModuleDef *m;
+    size_t buf_len;
+    uint8_t *buf;
+    
+    // Load file contents
+    buf = js_load_file(ctx, &buf_len, module_name);
+    if (!buf) {
+        JS_ThrowReferenceError(ctx, "could not load module '%s'", module_name);
+        return NULL;
+    }
+    
+    // Check if it's JSON module
+    if (js_module_test_json(ctx, attributes)) {
+        JSValue val = JS_ParseJSON(ctx, (const char *)buf, buf_len, module_name);
+        js_free(ctx, buf);
+        if (JS_IsException(val))
+            return NULL;
+        m = JS_NewCModule(ctx, module_name, NULL);
+        if (!m) {
+            JS_FreeValue(ctx, val);
+            return NULL;
+        }
+        JS_SetModuleExport(ctx, m, "default", val);
+        return m;
+    }
+    
+    // Compile as JavaScript module
+    JSValue func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
+                               JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    js_free(ctx, buf);
+    
+    if (JS_IsException(func_val))
+        return NULL;
+    
+    js_module_set_import_meta(ctx, func_val, TRUE, FALSE);
+    
+    return JS_VALUE_GET_PTR(func_val);
+}
+```
+
+## Import Attributes Support
+
+### JS_SetModuleLoaderFunc2
+
+Set module loader with import attributes support.
+
+```c
+void JS_SetModuleLoaderFunc2(JSRuntime *rt,
+                            JSModuleNormalizeFunc *module_normalize,
+                            JSModuleLoaderFunc2 *module_loader,
+                            JSModuleCheckSupportedImportAttributes *module_check_attrs,
+                            void *opaque);
+```
+
+#### Function Type Definitions
+
+```c
+typedef JSModuleDef *JSModuleLoaderFunc2(JSContext *ctx,
+                                        const char *module_name, void *opaque,
+                                        JSValueConst attributes);
+
+typedef int JSModuleCheckSupportedImportAttributes(JSContext *ctx, void *opaque,
+                                                  JSValueConst attributes);
+```
+
+### Example: JSON Module Import
+
+```javascript
+// Import with type attribute
+import data from './config.json' with { type: 'json' };
+console.log(data);
+```
+
+```c
+int js_module_check_attributes(JSContext *ctx, void *opaque,
+                              JSValueConst attributes)
+{
+    JSValue type = JS_GetPropertyStr(ctx, attributes, "type");
+    const char *type_str = JS_ToCString(ctx, type);
+    int ret = 0;
+    
+    if (type_str && strcmp(type_str, "json") != 0) {
+        JS_ThrowTypeError(ctx, "unsupported import attribute type '%s'", type_str);
+        ret = -1;
+    }
+    
+    JS_FreeCString(ctx, type_str);
+    JS_FreeValue(ctx, type);
+    return ret;
+}
+```
+
+## C Modules
+
+### JS_NewCModule
+
+Create a new C module.
+
+```c
+JSModuleDef *JS_NewCModule(JSContext *ctx, const char *name_str,
+                          JSModuleInitFunc *func);
+```
+
+#### Parameters
+
+- `ctx` - The JavaScript context
+- `name_str` - Module name
+- `func` - Initialization function (called when module is first imported)
+
+#### Returns
+
+Returns a module definition, or `NULL` on error.
+
+### Example: Creating a C Module
+
+From `examples/fib.c`:
+
+```c
+static JSValue js_fib(JSContext *ctx, JSValue this_val,
+                      int argc, JSValue *argv)
+{
+    int n, res;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    res = fib(n);
+    return JS_NewInt32(ctx, res);
+}
+
+static const JSCFunctionListEntry js_fib_funcs[] = {
+    JS_CFUNC_DEF("fib", 1, js_fib),
+};
+
+static int js_fib_init(JSContext *ctx, JSModuleDef *m)
+{
+    return JS_SetModuleExportList(ctx, m, js_fib_funcs,
+                                  countof(js_fib_funcs));
+}
+
+JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
+{
+    JSModuleDef *m;
+    m = JS_NewCModule(ctx, module_name, js_fib_init);
+    if (!m)
+        return NULL;
+    JS_AddModuleExportList(ctx, m, js_fib_funcs, countof(js_fib_funcs));
+    return m;
+}
+```
+
+### JS_AddModuleExport
+
+Declare a module export (before instantiation).
+
+```c
+int JS_AddModuleExport(JSContext *ctx, JSModuleDef *m, const char *name_str);
+```
+
+### JS_AddModuleExportList
+
+Declare multiple module exports.
+
+```c
+int JS_AddModuleExportList(JSContext *ctx, JSModuleDef *m,
+                          const JSCFunctionListEntry *tab, int len);
+```
+
+### JS_SetModuleExport
+
+Set the value of a module export (after instantiation).
+
+```c
+int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *export_name,
+                      JSValue val);
+```
+
+### JS_SetModuleExportList
+
+Set multiple module export values.
+
+```c
+int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
+                          const JSCFunctionListEntry *tab, int len);
+```
+
+## Module Metadata
+
+### JS_GetImportMeta
+
+Get the `import.meta` object for a module.
+
+```c
+JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
+```
+
+### Example: Setting import.meta
+
+From quickjs-libc:
+
+```c
+int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
+                             bool use_realpath, bool is_main)
+{
+    JSModuleDef *m;
+    char buf[PATH_MAX + 16];
+    JSValue meta_obj;
+    JSAtom module_name_atom;
+    const char *module_name;
+    
+    m = JS_VALUE_GET_PTR(func_val);
+    module_name_atom = JS_GetModuleName(ctx, m);
+    module_name = JS_AtomToCString(ctx, module_name_atom);
+    JS_FreeAtom(ctx, module_name_atom);
+    if (!module_name)
+        return -1;
+    
+    meta_obj = JS_GetImportMeta(ctx, m);
+    if (JS_IsException(meta_obj))
+        goto fail;
+    
+    JS_DefinePropertyValueStr(ctx, meta_obj, "url",
+                             JS_NewString(ctx, module_name),
+                             JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, meta_obj, "main",
+                             JS_NewBool(ctx, is_main),
+                             JS_PROP_C_W_E);
+    JS_FreeValue(ctx, meta_obj);
+    JS_FreeCString(ctx, module_name);
+    return 0;
+    
+fail:
+    JS_FreeCString(ctx, module_name);
+    return -1;
+}
+```
+
+### JS_GetModuleName
+
+Get the name of a module.
+
+```c
+JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
+```
+
+### JS_GetModuleNamespace
+
+Get the namespace object of a module.
+
+```c
+JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
+```
+
+## Dynamic Import
+
+Dynamic imports are handled automatically by the module loader:
+
+```javascript
+// JavaScript code
+const module = await import('./my-module.js');
+console.log(module.default);
+```
+
+The module loader function is called when the import executes.
+
+## Complete Example
+
+```c
+#include <quickjs.h>
+#include <quickjs-libc.h>
+
+int main(int argc, char **argv)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // Set up module loader
+    JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader,
+                           js_module_check_attributes, NULL);
+    
+    // Add standard helpers
+    js_std_add_helpers(ctx, argc, argv);
+    
+    // Load and execute a module
+    const char *module_code = 
+        "import { fib } from './fib.so';\n"
+        "console.log('fib(10) =', fib(10));";
+    
+    JSValue result = JS_Eval(ctx, module_code, strlen(module_code),
+                             "main.js", JS_EVAL_TYPE_MODULE);
+    
+    if (JS_IsException(result)) {
+        js_std_dump_error(ctx);
+    }
+    
+    JS_FreeValue(ctx, result);
+    
+    // Run pending jobs (for async operations)
+    js_std_loop(ctx);
+    
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+## Notes
+
+- Module loader functions are called per runtime, not per context
+- Use `JS_EVAL_TYPE_MODULE` flag when evaluating module code
+- C modules can be dynamically loaded as `.so`/`.dll` files
+- Import attributes (formerly "import assertions") are supported
+- The default normalizer resolves relative paths
+- `import.meta.url` and `import.meta.main` are commonly set by loaders

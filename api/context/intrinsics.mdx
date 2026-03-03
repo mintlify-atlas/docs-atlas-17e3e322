@@ -1,0 +1,364 @@
+---
+title: Intrinsic Objects
+description: Functions for selectively adding JavaScript intrinsic objects to minimize memory footprint
+---
+
+# Intrinsic Objects
+
+For memory-constrained environments, QuickJS allows you to create a minimal context and selectively add only the intrinsic objects you need. This can significantly reduce memory usage compared to creating a full context with `JS_NewContext()`.
+
+## Overview
+
+Instead of using `JS_NewContext()` which includes all standard objects, you can:
+
+1. Create a raw context with `JS_NewContextRaw()`
+2. Add only the intrinsic objects you need
+3. Save memory by excluding unused functionality
+
+## JS_NewContextRaw
+
+Creates a minimal JavaScript context without any intrinsic objects.
+
+```c
+JSContext *JS_NewContextRaw(JSRuntime *rt);
+```
+
+<ParamField path="rt" type="JSRuntime*" required>
+  The runtime in which to create the context
+</ParamField>
+
+**Returns:** A new minimal `JSContext` pointer, or `NULL` on failure.
+
+### Description
+
+This creates a context with no intrinsic objects. You must add at least base objects with `JS_AddIntrinsicBaseObjects()` to have a functional JavaScript environment.
+
+## Intrinsic Functions
+
+### JS_AddIntrinsicBaseObjects
+
+Adds essential base objects required for basic JavaScript functionality.
+
+```c
+void JS_AddIntrinsicBaseObjects(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add base objects to
+</ParamField>
+
+**Adds:**
+- `Object`
+- `Function`
+- `Array`
+- `String`
+- `Number`
+- `Boolean`
+- `Symbol`
+- `Error` and error types
+- `Math`
+- Basic prototypes and constructors
+
+This function is essential and should always be called first when using `JS_NewContextRaw()`.
+
+### JS_AddIntrinsicDate
+
+Adds the `Date` object and related functionality.
+
+```c
+void JS_AddIntrinsicDate(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add Date support to
+</ParamField>
+
+**Adds:**
+- `Date` constructor
+- `Date.prototype` methods
+- Date parsing and formatting
+
+### JS_AddIntrinsicEval
+
+Adds support for the `eval()` function.
+
+```c
+void JS_AddIntrinsicEval(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add eval support to
+</ParamField>
+
+**Adds:**
+- Global `eval()` function
+- Dynamic code evaluation capabilities
+
+**Note:** Omitting this can improve security by preventing dynamic code execution.
+
+### JS_AddIntrinsicRegExp
+
+Adds support for regular expressions.
+
+```c
+int JS_AddIntrinsicRegExp(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add RegExp support to
+</ParamField>
+
+**Returns:** 0 on success, -1 on failure.
+
+**Adds:**
+- `RegExp` constructor
+- `RegExp.prototype` methods
+- Regular expression literal syntax
+- String methods that use RegExp (`match`, `replace`, etc.)
+
+**Note:** This function depends on `JS_AddIntrinsicRegExpCompiler()` being called first.
+
+### JS_AddIntrinsicRegExpCompiler
+
+Adds the regular expression compiler.
+
+```c
+void JS_AddIntrinsicRegExpCompiler(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add the RegExp compiler to
+</ParamField>
+
+**Description:** Must be called before `JS_AddIntrinsicRegExp()` to enable regular expression compilation.
+
+### JS_AddIntrinsicJSON
+
+Adds the `JSON` object with parse and stringify methods.
+
+```c
+void JS_AddIntrinsicJSON(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add JSON support to
+</ParamField>
+
+**Adds:**
+- `JSON.parse()`
+- `JSON.stringify()`
+
+### JS_AddIntrinsicProxy
+
+Adds support for Proxy objects.
+
+```c
+void JS_AddIntrinsicProxy(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add Proxy support to
+</ParamField>
+
+**Adds:**
+- `Proxy` constructor
+- `Reflect` object
+- Proxy handler traps
+
+### JS_AddIntrinsicMapSet
+
+Adds Map, Set, WeakMap, and WeakSet objects.
+
+```c
+void JS_AddIntrinsicMapSet(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add Map/Set support to
+</ParamField>
+
+**Adds:**
+- `Map` and `Map.prototype`
+- `Set` and `Set.prototype`
+- `WeakMap` and `WeakMap.prototype`
+- `WeakSet` and `WeakSet.prototype`
+
+### JS_AddIntrinsicTypedArrays
+
+Adds TypedArray and ArrayBuffer support.
+
+```c
+void JS_AddIntrinsicTypedArrays(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add TypedArray support to
+</ParamField>
+
+**Adds:**
+- `ArrayBuffer`
+- `SharedArrayBuffer`
+- `DataView`
+- All typed array types:
+  - `Int8Array`, `Uint8Array`, `Uint8ClampedArray`
+  - `Int16Array`, `Uint16Array`
+  - `Int32Array`, `Uint32Array`
+  - `Float16Array`, `Float32Array`, `Float64Array`
+  - `BigInt64Array`, `BigUint64Array`
+
+### JS_AddIntrinsicPromise
+
+Adds Promise and async/await support.
+
+```c
+void JS_AddIntrinsicPromise(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add Promise support to
+</ParamField>
+
+**Adds:**
+- `Promise` constructor
+- `Promise.prototype.then()`, `catch()`, `finally()`
+- `Promise.all()`, `race()`, `allSettled()`, `any()`
+- `async`/`await` syntax support
+
+### JS_AddIntrinsicBigInt
+
+Adds BigInt support for arbitrary-precision integers.
+
+```c
+void JS_AddIntrinsicBigInt(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add BigInt support to
+</ParamField>
+
+**Adds:**
+- `BigInt` constructor
+- `BigInt.prototype` methods
+- BigInt literal syntax (`123n`)
+- BigInt arithmetic operations
+
+### JS_AddIntrinsicWeakRef
+
+Adds WeakRef and FinalizationRegistry support.
+
+```c
+void JS_AddIntrinsicWeakRef(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add WeakRef support to
+</ParamField>
+
+**Adds:**
+- `WeakRef` constructor
+- `FinalizationRegistry` constructor
+- Weak reference functionality
+
+### JS_AddPerformance
+
+Adds the Performance API.
+
+```c
+void JS_AddPerformance(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add Performance API to
+</ParamField>
+
+**Adds:**
+- `performance` global object
+- `performance.now()` for high-resolution timing
+
+### JS_AddIntrinsicDOMException
+
+Adds the DOMException error type.
+
+```c
+void JS_AddIntrinsicDOMException(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to add DOMException to
+</ParamField>
+
+**Adds:**
+- `DOMException` constructor
+- DOM-style exception handling
+
+## Example: Minimal Context
+
+Create a minimal context with only basic objects and JSON support:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *ctx = JS_NewContextRaw(rt);
+
+// Add only what we need
+JS_AddIntrinsicBaseObjects(ctx);
+JS_AddIntrinsicJSON(ctx);
+
+// Now we can parse JSON but don't have Date, RegExp, etc.
+const char *json = "{\"name\": \"test\", \"value\": 42}";
+JSValue obj = JS_ParseJSON(ctx, json, strlen(json), "<input>");
+
+// Use the object...
+JS_FreeValue(ctx, obj);
+
+JS_FreeContext(ctx);
+JS_FreeRuntime(rt);
+```
+
+## Example: Full-Featured Context
+
+Create a context with all intrinsics (equivalent to `JS_NewContext()`):
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *ctx = JS_NewContextRaw(rt);
+
+// Add all intrinsics
+JS_AddIntrinsicBaseObjects(ctx);
+JS_AddIntrinsicDate(ctx);
+JS_AddIntrinsicEval(ctx);
+JS_AddIntrinsicRegExpCompiler(ctx);
+JS_AddIntrinsicRegExp(ctx);
+JS_AddIntrinsicJSON(ctx);
+JS_AddIntrinsicProxy(ctx);
+JS_AddIntrinsicMapSet(ctx);
+JS_AddIntrinsicTypedArrays(ctx);
+JS_AddIntrinsicPromise(ctx);
+JS_AddIntrinsicBigInt(ctx);
+JS_AddIntrinsicWeakRef(ctx);
+JS_AddPerformance(ctx);
+JS_AddIntrinsicDOMException(ctx);
+
+// This context is now equivalent to one created with JS_NewContext()
+
+JS_FreeContext(ctx);
+JS_FreeRuntime(rt);
+```
+
+## Memory Savings
+
+By selectively adding intrinsics, you can significantly reduce memory usage:
+
+- **Minimal** (BaseObjects only): ~50KB
+- **Basic** (BaseObjects + JSON + Date): ~60KB
+- **Standard** (BaseObjects + common features): ~80KB
+- **Full** (All intrinsics): ~120KB
+
+Actual savings depend on your use case and platform.
+
+## Best Practices
+
+1. **Always start with base objects**: `JS_AddIntrinsicBaseObjects()` is required for basic functionality
+2. **Add RegExp compiler first**: Call `JS_AddIntrinsicRegExpCompiler()` before `JS_AddIntrinsicRegExp()`
+3. **Consider security**: Omit `JS_AddIntrinsicEval()` if you don't need dynamic code execution
+4. **Profile your usage**: Only add intrinsics that your code actually uses
+5. **Document requirements**: Clearly document which intrinsics your library or application needs

@@ -1,0 +1,225 @@
+---
+title: Arrays
+description: Create and manipulate JavaScript arrays
+---
+
+# Arrays
+
+QuickJS provides functions to create and work with JavaScript arrays.
+
+## Creating Arrays
+
+### JS_NewArray
+
+Create a new empty JavaScript array.
+
+```c
+JSValue JS_NewArray(JSContext *ctx);
+```
+
+#### Parameters
+
+- `ctx` - The JavaScript context
+
+#### Returns
+
+Returns a new empty array.
+
+#### Example
+
+```c
+JSValue arr = JS_NewArray(ctx);
+JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, 10));
+JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, 20));
+JS_SetPropertyUint32(ctx, arr, 2, JS_NewInt32(ctx, 30));
+// arr is now [10, 20, 30]
+```
+
+### JS_NewArrayFrom
+
+Create a new array from a C array of values.
+
+```c
+// takes ownership of the values
+JSValue JS_NewArrayFrom(JSContext *ctx, int count,
+                       const JSValue *values);
+```
+
+#### Parameters
+
+- `ctx` - The JavaScript context
+- `count` - Number of elements
+- `values` - Array of values (ownership transferred)
+
+#### Returns
+
+Returns a new array containing the specified values.
+
+#### Example
+
+```c
+JSValue values[3];
+values[0] = JS_NewString(ctx, "apple");
+values[1] = JS_NewString(ctx, "banana");
+values[2] = JS_NewString(ctx, "cherry");
+
+JSValue arr = JS_NewArrayFrom(ctx, 3, values);
+// arr is now ["apple", "banana", "cherry"]
+// values are automatically freed when array is freed
+```
+
+## Array Type Checking
+
+### JS_IsArray
+
+Check if a value is an array.
+
+```c
+bool JS_IsArray(JSValueConst val);
+```
+
+#### Example
+
+```c
+JSValue arr = JS_NewArray(ctx);
+if (JS_IsArray(arr)) {
+    printf("It's an array!\n");
+}
+JS_FreeValue(ctx, arr);
+```
+
+**Note:** This function no longer "punches through" proxies. To check if a proxy's target is an array, use `JS_GetProxyTarget()` first.
+
+## Array Operations
+
+### Getting Array Length
+
+```c
+int JS_GetLength(JSContext *ctx, JSValueConst obj, int64_t *pres);
+```
+
+#### Example
+
+```c
+int64_t length;
+if (JS_GetLength(ctx, arr, &length) == 0) {
+    printf("Array length: %lld\n", (long long)length);
+}
+```
+
+### Setting Array Length
+
+```c
+int JS_SetLength(JSContext *ctx, JSValueConst obj, int64_t len);
+```
+
+#### Example
+
+```c
+JS_SetLength(ctx, arr, 10);  // Resize array to length 10
+```
+
+### Accessing Array Elements
+
+Use property access functions with numeric indices:
+
+```c
+JSValue JS_GetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
+                             uint32_t idx);
+
+int JS_SetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
+                        uint32_t idx, JSValue val);
+
+int JS_DefinePropertyValueUint32(JSContext *ctx, JSValueConst this_obj,
+                                uint32_t idx, JSValue val, int flags);
+```
+
+#### Example
+
+```c
+JSValue arr = JS_NewArray(ctx);
+
+// Set elements
+JS_SetPropertyUint32(ctx, arr, 0, JS_NewString(ctx, "first"));
+JS_SetPropertyUint32(ctx, arr, 1, JS_NewString(ctx, "second"));
+
+// Get elements
+JSValue first = JS_GetPropertyUint32(ctx, arr, 0);
+const char *str = JS_ToCString(ctx, first);
+printf("%s\n", str);  // prints "first"
+JS_FreeCString(ctx, str);
+JS_FreeValue(ctx, first);
+
+JS_FreeValue(ctx, arr);
+```
+
+### Iterating Over Arrays
+
+```c
+JSValue arr = JS_GetPropertyStr(ctx, global, "myArray");
+int64_t length;
+
+if (JS_GetLength(ctx, arr, &length) == 0) {
+    for (int64_t i = 0; i < length; i++) {
+        JSValue elem = JS_GetPropertyUint32(ctx, arr, (uint32_t)i);
+        
+        // Process element
+        if (JS_IsNumber(elem)) {
+            int32_t val;
+            JS_ToInt32(ctx, &val, elem);
+            printf("arr[%lld] = %d\n", (long long)i, val);
+        }
+        
+        JS_FreeValue(ctx, elem);
+    }
+}
+
+JS_FreeValue(ctx, arr);
+```
+
+## Typed Arrays and Array Buffers
+
+QuickJS also supports TypedArrays and ArrayBuffers through intrinsic functions. These are available after calling `JS_AddIntrinsicTypedArrays()`:
+
+- `JS_NewUint8Array()` - Create Uint8Array
+- `JS_NewArrayBuffer()` - Create ArrayBuffer
+- `JS_GetUint8Array()` - Get data from Uint8Array
+- `JS_GetArrayBuffer()` - Get data from ArrayBuffer
+
+## Array-like Operations
+
+### Pushing Values
+
+```c
+// Get current length and append
+int64_t length;
+JS_GetLength(ctx, arr, &length);
+JS_SetPropertyUint32(ctx, arr, (uint32_t)length, JS_NewInt32(ctx, 42));
+```
+
+### Calling Array Methods
+
+Use `JS_Invoke()` to call array methods:
+
+```c
+JSValue arr = JS_GetPropertyStr(ctx, global, "myArray");
+
+// Call arr.push(123)
+JSAtom push_atom = JS_NewAtom(ctx, "push");
+JSValue arg = JS_NewInt32(ctx, 123);
+JSValue result = JS_Invoke(ctx, arr, push_atom, 1, &arg);
+JS_FreeValue(ctx, result);
+JS_FreeValue(ctx, arg);
+JS_FreeAtom(ctx, push_atom);
+
+JS_FreeValue(ctx, arr);
+```
+
+## Notes
+
+- Arrays are regular objects with a `length` property
+- Use `JS_SetPropertyUint32()` for numeric indices
+- `JS_NewArrayFrom()` takes ownership of the values array
+- Array indices are `uint32_t` (0 to 2^32-1)
+- For large indices or negative indices, use `JS_GetPropertyInt64()`
+- Always check return values and free JSValues properly

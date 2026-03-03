@@ -1,0 +1,318 @@
+---
+title: Realms and Multiple Contexts
+description: Understanding JavaScript realms and managing multiple contexts within a runtime
+---
+
+# Realms and Multiple Contexts
+
+QuickJS supports multiple JavaScript contexts (realms) within a single runtime. This powerful feature allows you to create isolated JavaScript environments that can optionally share objects, similar to how iframes work in web browsers.
+
+## Understanding Contexts and Realms
+
+### What is a Context?
+
+A `JSContext` represents a JavaScript realm - a complete JavaScript environment with:
+- Its own global object
+- Its own set of built-in objects (Object, Array, etc.)
+- Its own prototype chains
+- Its own exception state
+
+### What is a Runtime?
+
+A `JSRuntime` represents an isolated JavaScript engine instance with:
+- A single garbage collector
+- A shared memory heap
+- Multiple contexts that can share objects
+- No thread-safety (single-threaded execution)
+
+## Creating Multiple Contexts
+
+### Independent Contexts
+
+You can create multiple independent contexts within the same runtime:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+
+// Create two independent contexts
+JSContext *ctx1 = JS_NewContext(rt);
+JSContext *ctx2 = JS_NewContext(rt);
+
+// Each has its own global object
+JSValue global1 = JS_GetGlobalObject(ctx1);
+JSValue global2 = JS_GetGlobalObject(ctx2);
+
+// Set a property in ctx1
+JS_SetPropertyStr(ctx1, global1, "name", JS_NewString(ctx1, "Context 1"));
+
+// This property doesn't exist in ctx2
+JSValue result = JS_GetPropertyStr(ctx2, global2, "name");
+printf("Is undefined: %d\n", JS_IsUndefined(result)); // Prints: 1
+
+JS_FreeValue(ctx2, result);
+JS_FreeValue(ctx1, global1);
+JS_FreeValue(ctx2, global2);
+
+JS_FreeContext(ctx1);
+JS_FreeContext(ctx2);
+JS_FreeRuntime(rt);
+```
+
+### Shared Contexts
+
+Use `JS_DupContext()` to create contexts that share the same realm:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *ctx1 = JS_NewContext(rt);
+
+// Create a context that shares ctx1's realm
+JSContext *ctx2 = JS_DupContext(ctx1);
+
+// Both contexts share the same global object
+JSValue global1 = JS_GetGlobalObject(ctx1);
+JSValue global2 = JS_GetGlobalObject(ctx2);
+
+// Set a property in ctx1
+JS_SetPropertyStr(ctx1, global1, "shared", JS_NewString(ctx1, "visible"));
+
+// Property is visible in ctx2
+JSValue result = JS_GetPropertyStr(ctx2, global2, "shared");
+const char *str = JS_ToCString(ctx2, result);
+printf("Value: %s\n", str); // Prints: Value: visible
+
+JS_FreeCString(ctx2, str);
+JS_FreeValue(ctx2, result);
+JS_FreeValue(ctx1, global1);
+JS_FreeValue(ctx2, global2);
+
+JS_FreeContext(ctx2);
+JS_FreeContext(ctx1);
+JS_FreeRuntime(rt);
+```
+
+## Sharing Objects Between Contexts
+
+### Transferring Objects
+
+Objects can be shared between contexts in the same runtime:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *ctx1 = JS_NewContext(rt);
+JSContext *ctx2 = JS_NewContext(rt);
+
+// Create an object in ctx1
+JSValue obj = JS_NewObject(ctx1);
+JS_SetPropertyStr(ctx1, obj, "value", JS_NewInt32(ctx1, 42));
+
+// Get global objects
+JSValue global1 = JS_GetGlobalObject(ctx1);
+JSValue global2 = JS_GetGlobalObject(ctx2);
+
+// Store the object in ctx1's global
+JS_SetPropertyStr(ctx1, global1, "sharedObj", JS_DupValue(ctx1, obj));
+
+// You can pass the object to ctx2
+// The object is reference-counted and shared between contexts
+JS_SetPropertyStr(ctx2, global2, "imported", obj);
+
+// Access from ctx2
+JSValue result = JS_Eval(ctx2, "imported.value", 13, "<eval>", JS_EVAL_TYPE_GLOBAL);
+int32_t value;
+JS_ToInt32(ctx2, &value, result);
+printf("Value: %d\n", value); // Prints: Value: 42
+
+JS_FreeValue(ctx2, result);
+JS_FreeValue(ctx1, global1);
+JS_FreeValue(ctx2, global2);
+
+JS_FreeContext(ctx1);
+JS_FreeContext(ctx2);
+JS_FreeRuntime(rt);
+```
+
+### Important Rules
+
+1. **Same Runtime Required**: Objects can only be shared between contexts in the same runtime
+2. **Reference Counting**: Shared objects use reference counting - free them in each context that uses them
+3. **Prototype Chains**: Each context has its own prototypes, even for shared objects
+4. **Global Objects**: Each context has its own global object unless created with `JS_DupContext()`
+
+## Use Cases
+
+### Sandboxing
+
+Create isolated environments for untrusted code:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+
+// Main context with full privileges
+JSContext *main_ctx = JS_NewContext(rt);
+
+// Sandbox context with restricted features
+JSContext *sandbox_ctx = JS_NewContextRaw(rt);
+JS_AddIntrinsicBaseObjects(sandbox_ctx);
+JS_AddIntrinsicJSON(sandbox_ctx);
+// Note: No eval, no file I/O, etc.
+
+// Run untrusted code in sandbox
+const char *untrusted = "JSON.stringify({test: 123})";
+JSValue result = JS_Eval(sandbox_ctx, untrusted, strlen(untrusted),
+                         "<sandbox>", JS_EVAL_TYPE_GLOBAL);
+
+if (!JS_IsException(result)) {
+    const char *json = JS_ToCString(sandbox_ctx, result);
+    printf("Result: %s\n", json);
+    JS_FreeCString(sandbox_ctx, json);
+}
+JS_FreeValue(sandbox_ctx, result);
+
+JS_FreeContext(sandbox_ctx);
+JS_FreeContext(main_ctx);
+JS_FreeRuntime(rt);
+```
+
+### Plugin Systems
+
+Isolate plugins in separate contexts:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *host_ctx = JS_NewContext(rt);
+
+// Create a context for each plugin
+JSContext *plugin1_ctx = JS_NewContext(rt);
+JSContext *plugin2_ctx = JS_NewContext(rt);
+
+// Load plugin code
+const char *plugin1_code = "globalThis.pluginName = 'Plugin 1';";
+const char *plugin2_code = "globalThis.pluginName = 'Plugin 2';";
+
+JS_Eval(plugin1_ctx, plugin1_code, strlen(plugin1_code),
+        "plugin1.js", JS_EVAL_TYPE_GLOBAL);
+JS_Eval(plugin2_ctx, plugin2_code, strlen(plugin2_code),
+        "plugin2.js", JS_EVAL_TYPE_GLOBAL);
+
+// Plugins are isolated from each other
+// but can communicate through the host context
+
+JS_FreeContext(plugin1_ctx);
+JS_FreeContext(plugin2_ctx);
+JS_FreeContext(host_ctx);
+JS_FreeRuntime(rt);
+```
+
+### Web Worker Simulation
+
+Simulate Web Worker behavior:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *main_ctx = JS_NewContext(rt);
+JSContext *worker_ctx = JS_NewContext(rt);
+
+// Setup message passing between contexts
+// (simplified example)
+
+// Main thread code
+const char *main_code = 
+    "self.postMessage = function(data) {"  
+    "  // Serialize and send to worker"  
+    "};";
+
+// Worker code
+const char *worker_code =
+    "self.onmessage = function(event) {"  
+    "  const result = event.data * 2;"  
+    "  postMessage(result);"  
+    "};";
+
+JS_Eval(main_ctx, main_code, strlen(main_code),
+        "<main>", JS_EVAL_TYPE_GLOBAL);
+JS_Eval(worker_ctx, worker_code, strlen(worker_code),
+        "<worker>", JS_EVAL_TYPE_GLOBAL);
+
+JS_FreeContext(worker_ctx);
+JS_FreeContext(main_ctx);
+JS_FreeRuntime(rt);
+```
+
+### Testing Frameworks
+
+Isolate test cases:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+
+void run_test(JSRuntime *rt, const char *test_code) {
+    // Each test gets a fresh context
+    JSContext *test_ctx = JS_NewContext(rt);
+    
+    JSValue result = JS_Eval(test_ctx, test_code, strlen(test_code),
+                            "<test>", JS_EVAL_TYPE_GLOBAL);
+    
+    if (JS_IsException(result)) {
+        printf("Test failed\n");
+    } else {
+        printf("Test passed\n");
+    }
+    
+    JS_FreeValue(test_ctx, result);
+    JS_FreeContext(test_ctx);
+}
+
+// Run isolated tests
+run_test(rt, "globalThis.x = 1; x === 1");
+run_test(rt, "typeof x === 'undefined'"); // x doesn't leak between tests
+
+JS_FreeRuntime(rt);
+```
+
+## Performance Considerations
+
+### Memory Usage
+
+- Each context has its own global object and built-in objects
+- Multiple contexts increase memory usage
+- Use `JS_DupContext()` when you need shared state to reduce overhead
+- Consider using `JS_NewContextRaw()` with minimal intrinsics for worker contexts
+
+### Garbage Collection
+
+- All contexts in a runtime share the same garbage collector
+- GC runs affect all contexts in the runtime
+- Objects shared between contexts are only freed when all references are gone
+
+### Context Switching
+
+- Switching between contexts is lightweight
+- No context switch overhead within the same runtime
+- Multiple runtimes require separate processes/threads
+
+## Best Practices
+
+1. **One Runtime Per Thread**: Never share a runtime across threads
+2. **Free in Reverse Order**: Free contexts before the runtime
+3. **Clean Exception State**: Handle exceptions before switching contexts
+4. **Document Context Ownership**: Clearly document which context owns which objects
+5. **Use Const Correctness**: Use `JSValueConst` for parameters that don't transfer ownership
+6. **Limit Context Count**: Each context adds overhead; don't create too many
+7. **Consider Context Pools**: Reuse contexts instead of creating/destroying frequently
+
+## Limitations
+
+- **No Thread Safety**: Contexts cannot be safely accessed from multiple threads
+- **No Cross-Runtime Sharing**: Objects cannot be shared between different runtimes
+- **Single GC**: All contexts in a runtime are paused during garbage collection
+- **Prototype Isolation**: Modifying built-in prototypes in one context doesn't affect others
+
+## Related Functions
+
+- `JS_NewContext()` - Create a new independent context
+- `JS_DupContext()` - Create a context that shares the same realm
+- `JS_FreeContext()` - Free a context
+- `JS_GetRuntime()` - Get the runtime associated with a context
+- `JS_GetGlobalObject()` - Get a context's global object
+- `JS_DupValue()` - Duplicate a value for sharing between contexts

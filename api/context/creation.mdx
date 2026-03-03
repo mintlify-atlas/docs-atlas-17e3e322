@@ -1,0 +1,169 @@
+---
+title: Context Creation
+description: Functions for creating, duplicating, and freeing JavaScript contexts
+---
+
+# Context Creation
+
+These functions manage the lifecycle of JavaScript contexts (`JSContext`). A context represents a JavaScript realm with its own global objects and system objects. Multiple contexts can exist within a single runtime and share objects, similar to how frames of the same origin share JavaScript objects in a web browser.
+
+## JS_NewContext
+
+Creates a new JavaScript context with all standard intrinsic objects.
+
+```c
+JSContext *JS_NewContext(JSRuntime *rt);
+```
+
+<ParamField path="rt" type="JSRuntime*" required>
+  The runtime in which to create the context
+</ParamField>
+
+**Returns:** A new `JSContext` pointer, or `NULL` on failure.
+
+### Description
+
+This function creates a fully-featured JavaScript context with all standard intrinsic objects including:
+- Base objects (Object, Function, Array, etc.)
+- Date
+- Eval
+- RegExp
+- JSON
+- Proxy
+- Map and Set
+- TypedArrays
+- Promise
+- BigInt
+
+For memory-constrained environments, use `JS_NewContextRaw()` combined with selective intrinsic functions to create a minimal context.
+
+### Example
+
+```c
+// Create a runtime
+JSRuntime *rt = JS_NewRuntime();
+if (!rt) {
+    fprintf(stderr, "Failed to create runtime\n");
+    return 1;
+}
+
+// Create a context with all standard objects
+JSContext *ctx = JS_NewContext(rt);
+if (!ctx) {
+    fprintf(stderr, "Failed to create context\n");
+    JS_FreeRuntime(rt);
+    return 1;
+}
+
+// Use the context...
+JSValue global = JS_GetGlobalObject(ctx);
+JS_FreeValue(ctx, global);
+
+// Cleanup
+JS_FreeContext(ctx);
+JS_FreeRuntime(rt);
+```
+
+## JS_FreeContext
+
+Frees a JavaScript context and releases all associated resources.
+
+```c
+void JS_FreeContext(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to free
+</ParamField>
+
+### Description
+
+This function releases all resources associated with the context, including:
+- All JavaScript objects created in the context
+- The global object and its properties
+- All pending exceptions
+- Internal data structures
+
+You must free all contexts before freeing the runtime. Failing to do so will result in memory leaks.
+
+### Important Notes
+
+- Always call `JS_FreeContext()` before `JS_FreeRuntime()`
+- All `JSValue` objects created in this context should be freed before calling this function
+- Do not use the context pointer after calling this function
+
+### Example
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *ctx1 = JS_NewContext(rt);
+JSContext *ctx2 = JS_NewContext(rt);
+
+// Use contexts...
+
+// Free contexts before runtime
+JS_FreeContext(ctx1);
+JS_FreeContext(ctx2);
+JS_FreeRuntime(rt);
+```
+
+## JS_DupContext
+
+Creates a new context that shares the same runtime and global objects.
+
+```c
+JSContext *JS_DupContext(JSContext *ctx);
+```
+
+<ParamField path="ctx" type="JSContext*" required>
+  The context to duplicate
+</ParamField>
+
+**Returns:** A new `JSContext` pointer that shares objects with the original context, or `NULL` on failure.
+
+### Description
+
+This function creates a new context within the same runtime. The new context:
+- Shares the same global object as the original context
+- Can access and modify objects from the original context
+- Behaves like the same JavaScript realm
+- Must be freed separately with `JS_FreeContext()`
+
+This is useful for scenarios where you need multiple references to the same realm, such as implementing worker threads or isolating execution while sharing state.
+
+### Example
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *ctx = JS_NewContext(rt);
+
+// Set a global variable in the original context
+JSValue global = JS_GetGlobalObject(ctx);
+JS_SetPropertyStr(ctx, global, "shared", JS_NewInt32(ctx, 42));
+JS_FreeValue(ctx, global);
+
+// Duplicate the context
+JSContext *ctx2 = JS_DupContext(ctx);
+
+// Access the shared variable from the duplicated context
+JSValue result = JS_Eval(ctx2, "shared", 6, "<eval>", JS_EVAL_TYPE_GLOBAL);
+// result will be 42
+
+int32_t value;
+JS_ToInt32(ctx2, &value, result);
+printf("Shared value: %d\n", value); // Prints: Shared value: 42
+
+JS_FreeValue(ctx2, result);
+
+// Free both contexts
+JS_FreeContext(ctx2);
+JS_FreeContext(ctx);
+JS_FreeRuntime(rt);
+```
+
+## Related Functions
+
+- `JS_NewContextRaw()` - Create a minimal context without intrinsic objects
+- `JS_GetRuntime()` - Get the runtime associated with a context
+- `JS_GetContextOpaque()` / `JS_SetContextOpaque()` - Attach custom data to a context
+- `JS_GetGlobalObject()` - Get the global object for a context

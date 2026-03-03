@@ -1,0 +1,521 @@
+---
+title: Property Access
+description: Functions for getting and setting object properties
+---
+
+# Property Access
+
+These functions provide access to JavaScript object properties from C code. Properties can be accessed using atoms, strings, or numeric indices.
+
+## Getting Properties
+
+### JS_GetProperty
+
+Gets a property value using an atom.
+
+```c
+JS_EXTERN JSValue JS_GetProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to get property from
+- `prop` - Property name as atom
+
+**Returns:** Property value, or `JS_EXCEPTION` on error
+
+**Example:**
+```c
+JSAtom prop_atom = JS_NewAtom(ctx, "length");
+JSValue length = JS_GetProperty(ctx, array_obj, prop_atom);
+JS_FreeAtom(ctx, prop_atom);
+if (JS_IsException(length))
+    return JS_EXCEPTION;
+JS_FreeValue(ctx, length);
+```
+
+### JS_GetPropertyStr
+
+Gets a property value using a C string.
+
+```c
+JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValueConst this_obj, const char *prop);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to get property from
+- `prop` - Property name as null-terminated string
+
+**Returns:** Property value, or `JS_EXCEPTION` on error
+
+**Example:**
+```c
+JSValue proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+if (JS_IsException(proto))
+    goto fail;
+JSValue obj = JS_NewObjectProtoClass(ctx, proto, js_point_class_id);
+JS_FreeValue(ctx, proto);
+```
+
+### JS_GetPropertyUint32
+
+Gets a property value using a numeric index.
+
+```c
+JS_EXTERN JSValue JS_GetPropertyUint32(JSContext *ctx, JSValueConst this_obj, uint32_t idx);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to get property from
+- `idx` - Property index (0-based)
+
+**Returns:** Property value, or `JS_EXCEPTION` on error
+
+**Example:**
+```c
+JSValue first_elem = JS_GetPropertyUint32(ctx, array_obj, 0);
+if (JS_IsException(first_elem))
+    return JS_EXCEPTION;
+JS_FreeValue(ctx, first_elem);
+```
+
+### JS_GetPropertyInt64
+
+Gets a property value using a 64-bit integer index.
+
+```c
+JS_EXTERN JSValue JS_GetPropertyInt64(JSContext *ctx, JSValueConst this_obj, int64_t idx);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to get property from
+- `idx` - Property index
+
+**Returns:** Property value, or `JS_EXCEPTION` on error
+
+## Setting Properties
+
+### JS_SetProperty
+
+Sets a property value using an atom.
+
+```c
+JS_EXTERN int JS_SetProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop, JSValue val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to set property on
+- `prop` - Property name as atom
+- `val` - Value to set (ownership transferred)
+
+**Returns:**
+- `1` on success
+- `0` on failure
+- `-1` on exception
+
+**Note:** This function takes ownership of `val`. Do not call `JS_FreeValue()` on it.
+
+**Example:**
+```c
+JSAtom prop_atom = JS_NewAtom(ctx, "name");
+int ret = JS_SetProperty(ctx, obj, prop_atom, JS_NewString(ctx, "example"));
+JS_FreeAtom(ctx, prop_atom);
+if (ret < 0)
+    return JS_EXCEPTION;
+```
+
+### JS_SetPropertyStr
+
+Sets a property value using a C string.
+
+```c
+JS_EXTERN int JS_SetPropertyStr(JSContext *ctx, JSValueConst this_obj, const char *prop, JSValue val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to set property on
+- `prop` - Property name as null-terminated string
+- `val` - Value to set (ownership transferred)
+
+**Returns:**
+- `1` on success
+- `0` on failure
+- `-1` on exception
+
+**Example:**
+```c
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, obj, "foo", JS_NewString(ctx, "bar"));
+JS_SetPropertyStr(ctx, obj, "count", JS_NewInt32(ctx, 42));
+```
+
+### JS_SetPropertyUint32
+
+Sets a property value using a numeric index.
+
+```c
+JS_EXTERN int JS_SetPropertyUint32(JSContext *ctx, JSValueConst this_obj, uint32_t idx, JSValue val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to set property on
+- `idx` - Property index (0-based)
+- `val` - Value to set (ownership transferred)
+
+**Returns:**
+- `1` on success
+- `0` on failure  
+- `-1` on exception
+
+**Example:**
+```c
+JSValue arr = JS_NewArray(ctx);
+JS_SetPropertyUint32(ctx, arr, 0, JS_NewInt32(ctx, 1));
+JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, 2));
+JS_SetPropertyUint32(ctx, arr, 2, JS_NewInt32(ctx, 3));
+```
+
+### JS_SetPropertyInt64
+
+Sets a property value using a 64-bit integer index.
+
+```c
+JS_EXTERN int JS_SetPropertyInt64(JSContext *ctx, JSValueConst this_obj, int64_t idx, JSValue val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to set property on
+- `idx` - Property index
+- `val` - Value to set (ownership transferred)
+
+**Returns:**
+- `1` on success
+- `0` on failure
+- `-1` on exception
+
+## Checking Properties
+
+### JS_HasProperty
+
+Checks if an object has a property.
+
+```c
+JS_EXTERN int JS_HasProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to check
+- `prop` - Property name as atom
+
+**Returns:**
+- `1` if property exists
+- `0` if property does not exist
+- `-1` on exception
+
+**Example:**
+```c
+JSAtom prop_atom = JS_NewAtom(ctx, "toString");
+int has_prop = JS_HasProperty(ctx, obj, prop_atom);
+JS_FreeAtom(ctx, prop_atom);
+if (has_prop < 0)
+    return JS_EXCEPTION;
+if (has_prop) {
+    // Property exists
+}
+```
+
+### JS_DeleteProperty
+
+Deletes a property from an object.
+
+```c
+JS_EXTERN int JS_DeleteProperty(JSContext *ctx, JSValueConst obj, JSAtom prop, int flags);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `obj` - Object to delete property from
+- `prop` - Property name as atom
+- `flags` - Combination of `JS_PROP_*` flags
+
+**Returns:**
+- `1` on success
+- `0` on failure
+- `-1` on exception
+
+## Advanced Property Operations
+
+### JS_DefineProperty
+
+Defines a property with a descriptor.
+
+```c
+JS_EXTERN int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
+                               JSAtom prop, JSValueConst val,
+                               JSValueConst getter, JSValueConst setter,
+                               int flags);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to define property on
+- `prop` - Property name as atom
+- `val` - Property value (or `JS_UNDEFINED`)
+- `getter` - Getter function (or `JS_UNDEFINED`)
+- `setter` - Setter function (or `JS_UNDEFINED`)
+- `flags` - Property flags (see below)
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+**Flags:**
+```c
+JS_PROP_CONFIGURABLE  // Property can be deleted or modified
+JS_PROP_WRITABLE      // Property value can be changed
+JS_PROP_ENUMERABLE    // Property shows up in enumeration
+JS_PROP_C_W_E         // All three flags combined
+```
+
+### JS_DefinePropertyValue
+
+Defines a data property with a value.
+
+```c
+JS_EXTERN int JS_DefinePropertyValue(JSContext *ctx, JSValueConst this_obj,
+                                    JSAtom prop, JSValue val, int flags);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to define property on
+- `prop` - Property name as atom
+- `val` - Property value (ownership transferred)
+- `flags` - Property flags
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_DefinePropertyValueStr
+
+Defines a data property with a value using a string name.
+
+```c
+JS_EXTERN int JS_DefinePropertyValueStr(JSContext *ctx, JSValueConst this_obj,
+                                       const char *prop, JSValue val, int flags);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to define property on
+- `prop` - Property name as null-terminated string
+- `val` - Property value (ownership transferred)
+- `flags` - Property flags
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_DefinePropertyValueUint32
+
+Defines a data property with a value using a numeric index.
+
+```c
+JS_EXTERN int JS_DefinePropertyValueUint32(JSContext *ctx, JSValueConst this_obj,
+                                          uint32_t idx, JSValue val, int flags);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to define property on
+- `idx` - Property index
+- `val` - Property value (ownership transferred)
+- `flags` - Property flags
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_DefinePropertyGetSet
+
+Defines an accessor property with getter and setter.
+
+```c
+JS_EXTERN int JS_DefinePropertyGetSet(JSContext *ctx, JSValueConst this_obj,
+                                     JSAtom prop, JSValue getter, JSValue setter,
+                                     int flags);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `this_obj` - Object to define property on
+- `prop` - Property name as atom
+- `getter` - Getter function (ownership transferred)
+- `setter` - Setter function (ownership transferred)
+- `flags` - Property flags
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_GetOwnProperty
+
+Gets the property descriptor for an own property.
+
+```c
+JS_EXTERN int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
+                               JSValueConst obj, JSAtom prop);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `desc` - Pointer to property descriptor structure
+- `obj` - Object to query
+- `prop` - Property name as atom
+
+**Returns:**
+- `1` if property exists
+- `0` if property does not exist
+- `-1` on exception
+
+**Property Descriptor:**
+```c
+typedef struct JSPropertyDescriptor {
+    int flags;
+    JSValue value;
+    JSValue getter;
+    JSValue setter;
+} JSPropertyDescriptor;
+```
+
+### JS_GetOwnPropertyNames
+
+Gets an array of property names from an object.
+
+```c
+JS_EXTERN int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
+                                    uint32_t *plen, JSValueConst obj,
+                                    int flags);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `ptab` - Pointer to receive property array
+- `plen` - Pointer to receive property count
+- `obj` - Object to query
+- `flags` - Combination of `JS_GPN_*` flags
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+**Flags:**
+```c
+JS_GPN_STRING_MASK   // Include string properties
+JS_GPN_SYMBOL_MASK   // Include symbol properties
+JS_GPN_PRIVATE_MASK  // Include private properties
+JS_GPN_ENUM_ONLY     // Only enumerable properties
+JS_GPN_SET_ENUM      // Set is_enumerable field
+```
+
+**Example:**
+```c
+JSPropertyEnum *tab;
+uint32_t len;
+if (JS_GetOwnPropertyNames(ctx, &tab, &len, obj, JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
+    return JS_EXCEPTION;
+
+for (uint32_t i = 0; i < len; i++) {
+    // Use tab[i].atom
+}
+JS_FreePropertyEnum(ctx, tab, len);
+```
+
+### JS_FreePropertyEnum
+
+Frees a property enumeration array.
+
+```c
+JS_EXTERN void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab, uint32_t len);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `tab` - Property array to free
+- `len` - Number of properties
+
+## Special Property Operations
+
+### JS_GetPrototype
+
+Gets the prototype of an object.
+
+```c
+JS_EXTERN JSValue JS_GetPrototype(JSContext *ctx, JSValueConst val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `val` - Object to get prototype from
+
+**Returns:** The prototype object, or `JS_EXCEPTION` on error
+
+### JS_SetPrototype
+
+Sets the prototype of an object.
+
+```c
+JS_EXTERN int JS_SetPrototype(JSContext *ctx, JSValueConst obj, JSValueConst proto_val);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `obj` - Object to set prototype on
+- `proto_val` - New prototype object or `JS_NULL`
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_GetLength
+
+Gets the length property of an object.
+
+```c
+JS_EXTERN int JS_GetLength(JSContext *ctx, JSValueConst obj, int64_t *pres);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `obj` - Object to get length from
+- `pres` - Pointer to store the length
+
+**Returns:**
+- `0` on success
+- `-1` on exception
+
+### JS_SetLength
+
+Sets the length property of an object.
+
+```c
+JS_EXTERN int JS_SetLength(JSContext *ctx, JSValueConst obj, int64_t len);
+```
+
+**Parameters:**
+- `ctx` - JavaScript context
+- `obj` - Object to set length on
+- `len` - New length value
+
+**Returns:**
+- `0` on success
+- `-1` on exception

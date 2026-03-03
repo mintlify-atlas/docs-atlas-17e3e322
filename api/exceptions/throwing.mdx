@@ -1,0 +1,99 @@
+---
+title: Throwing Exceptions
+description: Creating and throwing exceptions in QuickJS
+---
+
+# Throwing Exceptions
+
+QuickJS provides functions to create and throw exceptions from C code. When a C function throws an exception, it returns `JS_EXCEPTION`, and the exception object is stored in the `JSContext`.
+
+## JS_Throw
+
+Throws an exception in the current context.
+
+### Signature
+
+```c
+JSValue JS_Throw(JSContext *ctx, JSValue obj);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `obj` - The exception object to throw (takes ownership)
+
+### Return Value
+
+Always returns `JS_EXCEPTION`. This value should be returned from your C function to indicate an exception occurred.
+
+### Description
+
+`JS_Throw()` takes ownership of the exception object passed to it. The function stores the exception in the context and returns `JS_EXCEPTION`, which is a sentinel value indicating that an exception has occurred.
+
+### Example
+
+```c
+static JSValue my_function(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv) {
+    if (argc < 1) {
+        JSValue err = JS_NewError(ctx);
+        JS_DefinePropertyValueStr(ctx, err, "message",
+            JS_NewString(ctx, "Expected at least one argument"),
+            JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+        return JS_Throw(ctx, err);
+    }
+    
+    // Normal function logic
+    return JS_UNDEFINED;
+}
+```
+
+## Creating Custom Exceptions
+
+You can create custom exception objects before throwing them:
+
+```c
+// Create a plain error object
+JSValue error = JS_NewError(ctx);
+
+// Add custom properties
+JS_DefinePropertyValueStr(ctx, error, "message",
+    JS_NewString(ctx, "Custom error message"),
+    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+
+JS_DefinePropertyValueStr(ctx, error, "code",
+    JS_NewInt32(ctx, 42),
+    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+
+// Throw the error
+return JS_Throw(ctx, error);
+```
+
+## Throwing Existing Values
+
+You can throw any JavaScript value, not just error objects:
+
+```c
+// Throw a string
+return JS_Throw(ctx, JS_NewString(ctx, "Something went wrong"));
+
+// Throw a number
+return JS_Throw(ctx, JS_NewInt32(ctx, -1));
+
+// Throw an object
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, obj, "reason", JS_NewString(ctx, "Invalid input"));
+return JS_Throw(ctx, obj);
+```
+
+## Best Practices
+
+1. **Always return JS_EXCEPTION**: After calling `JS_Throw()`, immediately return its result.
+2. **Memory management**: `JS_Throw()` takes ownership of the exception object, so don't call `JS_FreeValue()` on it.
+3. **Use appropriate error types**: Use the specific error constructors (see [Error Types](/api/exceptions/error-types)) for standard JavaScript errors.
+4. **Add context**: Include meaningful error messages and additional properties to help with debugging.
+
+## See Also
+
+- [Catching Exceptions](/api/exceptions/catching) - Retrieving and handling exceptions
+- [Error Types](/api/exceptions/error-types) - Standard JavaScript error constructors

@@ -1,0 +1,66 @@
+---
+title: Hello World
+description: Simple Hello World example with QuickJS-ng
+---
+
+# Hello World
+
+This tutorial shows you how to run your first JavaScript program with QuickJS-ng.
+
+<Steps>
+
+<Step title="Create a JavaScript file">
+
+Create a file named `hello.js` with the following content:
+
+```javascript
+console.log("Hello World");
+```
+
+This is the simplest possible QuickJS program that prints output to the console.
+
+</Step>
+
+<Step title="Run with qjs">
+
+Execute the script using the `qjs` interpreter:
+
+```bash
+qjs hello.js
+```
+
+**Expected output:**
+
+```
+Hello World
+```
+
+</Step>
+
+<Step title="Run in REPL mode">
+
+You can also run QuickJS in interactive mode without a file:
+
+```bash
+qjs
+```
+
+Then type JavaScript directly:
+
+```javascript
+QuickJS - Type "\\h" for help
+qjs > console.log("Hello World");
+Hello World
+undefined
+qjs > .exit
+```
+
+</Step>
+
+</Steps>
+
+## Next Steps
+
+- Learn about [embedding QuickJS](./embedding-basic)
+- Explore [JavaScript modules](./modules)
+- Create [native C functions](./native-functions)

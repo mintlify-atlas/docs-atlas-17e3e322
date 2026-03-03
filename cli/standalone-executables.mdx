@@ -1,0 +1,443 @@
+---
+title: Creating Standalone Executables
+description: Guide to creating standalone JavaScript executables with QuickJS-ng
+---
+
+# Creating Standalone Executables
+
+QuickJS-ng provides two methods for creating standalone executables from JavaScript code:
+
+1. **Using `qjs -c`** - Simple, single-file bundling (recommended)
+2. **Using `qjsc -e`** - Full C compilation with custom modules
+
+## Method 1: Using qjs -c (Recommended)
+
+The simplest way to create a standalone executable is using the `qjs` interpreter's compile flag.
+
+### Basic Usage
+
+```bash
+qjs -c app.js -o app
+```
+
+This creates a standalone executable named `app` that bundles your JavaScript file with the QuickJS runtime.
+
+### How It Works
+
+<Steps>
+  <Step title="Compile to Bytecode">
+    The JavaScript file is compiled to QuickJS bytecode
+  </Step>
+  
+  <Step title="Append to Executable">
+    The bytecode is appended to a copy of the `qjs` executable with a trailer to help locate it
+  </Step>
+  
+  <Step title="Create Executable">
+    The result is a self-contained executable with the same runtime dependencies as `qjs`
+  </Step>
+</Steps>
+
+### Complete Example
+
+<CodeGroup>
+```javascript app.js
+console.log('Hello from standalone executable!');
+console.log('Arguments:', execArgv);
+```
+
+```bash Compile
+qjs -c app.js -o myapp
+```
+
+```bash Run
+./myapp arg1 arg2
+# Output:
+# Hello from standalone executable!
+# Arguments: ['./myapp', 'arg1', 'arg2']
+```
+</CodeGroup>
+
+### Using a Different Base Executable
+
+By default, `qjs -c` uses the current `qjs` executable as the base. You can specify a different one:
+
+```bash
+qjs -c app.js -o app --exe /usr/local/bin/qjs
+```
+
+<Note>
+  The `--exe` parameter expects an absolute path, such as `~/bin/qjs` or `$HOME/bin/qjs`.
+</Note>
+
+This is useful for:
+- Cross-compilation for different platforms
+- Using a custom-built `qjs` with specific features
+- Creating executables with different runtime configurations
+
+### Limitations
+
+<Warning>
+  No JavaScript bundling is performed. The specified JS file **cannot** depend on other files via `import` or `require`.
+</Warning>
+
+To work around this limitation, use a bundler:
+
+## Bundling Multiple Files
+
+Since `qjs -c` only compiles a single file, you need to bundle dependencies first.
+
+### Using esbuild
+
+<CodeGroup>
+```bash Install esbuild
+npm install -g esbuild
+```
+
+```bash Bundle
+esbuild my-app/index.js \
+  --bundle \
+  --outfile=app.js \
+  --external:qjs:* \
+  --minify \
+  --target=es2023 \
+  --platform=neutral \
+  --format=esm \
+  --main-fields=main,module
+```
+
+```bash Compile to Executable
+qjs -c app.js -o myapp
+```
+</CodeGroup>
+
+### Important esbuild Options
+
+<ParamField path="--bundle" type="flag">
+  Bundle all dependencies into a single file
+</ParamField>
+
+<ParamField path="--external:qjs:*" type="string">
+  Mark QuickJS built-in modules (`qjs:std`, `qjs:os`, `qjs:bjson`) as external to avoid bundling errors
+</ParamField>
+
+<ParamField path="--format=esm" type="string">
+  Output ES module format (recommended for QuickJS)
+</ParamField>
+
+<ParamField path="--target=es2023" type="string">
+  Target ECMAScript 2023 (QuickJS supports most ES2023 features)
+</ParamField>
+
+<ParamField path="--minify" type="flag">
+  Minify the output to reduce executable size
+</ParamField>
+
+## Method 2: Using qjsc -e
+
+For more control, you can use `qjsc` to generate a complete C program and compile it.
+
+### Basic Workflow
+
+<Steps>
+  <Step title="Compile to C">
+    Use `qjsc -e` to generate C source code:
+    
+    ```bash
+    qjsc -e -o app.c app.js
+    ```
+  </Step>
+  
+  <Step title="Compile C to Binary">
+    Compile the C file with a C compiler:
+    
+    ```bash
+    cc app.c -lquickjs -o app
+    ```
+  </Step>
+  
+  <Step title="Run">
+    Execute the standalone binary:
+    
+    ```bash
+    ./app
+    ```
+  </Step>
+</Steps>
+
+### Complete Example
+
+<CodeGroup>
+```javascript hello.js
+console.log("Hello World");
+```
+
+```bash Compile JavaScript to C
+qjsc -e -o hello.c hello.js
+```
+
+```bash Compile C to Executable
+cc hello.c -lquickjs -o hello
+```
+
+```bash Run
+./hello
+# Output: Hello World
+```
+</CodeGroup>
+
+### Advantages of qjsc -e
+
+- Full control over C compilation flags
+- Can integrate with C modules
+- Can customize the runtime initialization
+- Can compile multiple JavaScript files together
+
+### With External C Modules
+
+You can embed custom C modules in the executable:
+
+<CodeGroup>
+```c fib.c
+#include <quickjs.h>
+
+#define countof(x) (sizeof(x) / sizeof((x)[0]))
+
+static int fib(int n) {
+    if (n <= 0) return 0;
+    else if (n == 1) return 1;
+    else return fib(n - 1) + fib(n - 2);
+}
+
+static JSValue js_fib(JSContext *ctx, JSValue this_val,
+                      int argc, JSValue *argv) {
+    int n, res;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    res = fib(n);
+    return JS_NewInt32(ctx, res);
+}
+
+static const JSCFunctionListEntry js_fib_funcs[] = {
+    JS_CFUNC_DEF("fib", 1, js_fib),
+};
+
+JSModuleDef *js_init_module_fib(JSContext *ctx, const char *module_name) {
+    JSModuleDef *m = JS_NewCModule(ctx, module_name, NULL);
+    if (!m) return NULL;
+    JS_SetModuleExportList(ctx, m, js_fib_funcs, countof(js_fib_funcs));
+    return m;
+}
+```
+
+```javascript main.js
+import { fib } from 'fib';
+
+console.log('fib(10) =', fib(10));
+```
+
+```bash Compile Everything
+# Generate C code with module reference
+qjsc -M fib -e -o app.c main.js
+
+# Compile both C files together
+cc app.c fib.c -lquickjs -o app
+
+# Run
+./app
+# Output: fib(10) = 55
+```
+</CodeGroup>
+
+### Optimizations
+
+<Tabs>
+  <Tab title="Strip Source Code">
+    Remove source code from bytecode to reduce size:
+    
+    ```bash
+    qjsc -s -e -o app.c app.js
+    ```
+    
+    This removes the original JavaScript source but keeps debug info (line numbers, function names).
+  </Tab>
+  
+  <Tab title="Strip Debug Info">
+    Remove both source code and debug info for minimum size:
+    
+    ```bash
+    qjsc -ss -e -o app.c app.js
+    ```
+    
+    <Warning>
+      This makes stack traces less useful. Only use for production builds where size is critical.
+    </Warning>
+  </Tab>
+  
+  <Tab title="Minimal Runtime">
+    Exclude standard library modules:
+    
+    ```bash
+    qjsc -P -e -o app.c app.js
+    ```
+    
+    This removes `std`, `os`, and `bjson` modules, creating a smaller executable.
+  </Tab>
+</Tabs>
+
+## Comparison of Methods
+
+| Feature | qjs -c | qjsc -e |
+|---------|--------|--------|
+| Ease of use | ⭐⭐⭐ Very easy | ⭐⭐ Requires C compiler |
+| Single command | ✅ Yes | ❌ Two steps required |
+| Bundle multiple files | ❌ Needs bundler | ✅ Built-in |
+| C module integration | ❌ No | ✅ Yes |
+| Custom runtime config | ❌ Limited | ✅ Full control |
+| Cross-compilation | ✅ Via --exe | ✅ Via C cross-compiler |
+| Executable size | Same as qjs | Can be smaller with -P |
+
+## Advanced Examples
+
+### Full Application with Bundler
+
+<CodeGroup>
+```bash Project Structure
+my-app/
+├── src/
+│   ├── index.js
+│   ├── utils.js
+│   └── config.js
+├── package.json
+└── build.sh
+```
+
+```bash build.sh
+#!/bin/bash
+set -e
+
+# Bundle the application
+esbuild src/index.js \
+  --bundle \
+  --outfile=dist/app.js \
+  --external:qjs:* \
+  --minify \
+  --target=es2023 \
+  --platform=neutral \
+  --format=esm
+
+# Create standalone executable
+qjs -c dist/app.js -o dist/myapp
+
+echo "Build complete: dist/myapp"
+```
+
+```bash Build and Run
+chmod +x build.sh
+./build.sh
+
+./dist/myapp
+```
+</CodeGroup>
+
+### With Standard Library Access
+
+```javascript app.js
+import * as std from 'qjs:std';
+import * as os from 'qjs:os';
+
+const [file, err] = std.open('data.txt', 'r');
+if (err) {
+  console.error('Failed to open file:', err);
+  std.exit(1);
+}
+
+const content = file.readAsString();
+file.close();
+
+console.log('File contents:', content);
+```
+
+```bash
+qjs -c app.js -o readfile
+./readfile
+```
+
+### Platform-Specific Builds
+
+```bash
+# Build for Linux
+qjs -c app.js -o app-linux --exe /usr/bin/qjs
+
+# Build for macOS (if you have a macOS qjs binary)
+qjs -c app.js -o app-macos --exe /path/to/macos/qjs
+
+# Build for custom embedded system
+qjs -c app.js -o app-embedded --exe /path/to/embedded/qjs
+```
+
+## Distribution
+
+The resulting executables are self-contained and have the same runtime dependencies as the base `qjs` executable:
+
+- libc (standard C library)
+- libm (math library)
+- pthreads (if threading is enabled)
+- libdl (if dynamic module loading is enabled)
+
+<Note>
+  You can check dependencies with:
+  
+  ```bash
+  ldd ./myapp  # On Linux
+  otool -L ./myapp  # On macOS
+  ```
+</Note>
+
+## Troubleshooting
+
+### "Module not found" errors
+
+If you get module errors when running a bundled executable:
+
+1. Make sure you used `--external:qjs:*` in esbuild
+2. Check that all imports use the correct module specifiers
+3. Verify the bundle works with `qjs` before compiling
+
+```bash
+# Test the bundle first
+qjs dist/app.js
+
+# Then compile
+qjs -c dist/app.js -o myapp
+```
+
+### Linking errors with qjsc
+
+If you get linker errors when compiling C code:
+
+```bash
+# Make sure QuickJS library is installed
+sudo make install  # In QuickJS source directory
+
+# Or specify library path explicitly
+cc app.c -I/path/to/quickjs -L/path/to/quickjs -lquickjs -o app
+```
+
+### Large executable size
+
+To reduce executable size:
+
+1. Use `--minify` in esbuild
+2. Use `-s` or `-ss` flags with qjsc
+3. Use `-P` to exclude standard library (if not needed)
+4. Strip the final executable:
+
+```bash
+strip myapp
+```
+
+## See Also
+
+- [qjs](./qjs) - QuickJS interpreter CLI reference
+- [qjsc](./qjsc) - QuickJS compiler CLI reference

@@ -1,0 +1,211 @@
+---
+title: Atoms Overview
+description: Understanding atoms in QuickJS and their use cases
+---
+
+# Atoms Overview
+
+Atoms are an important concept in QuickJS for efficient string handling, particularly for property names and identifiers. Understanding atoms is crucial for writing efficient C extensions.
+
+## What Are Atoms?
+
+An **atom** in QuickJS is an interned string identifier represented by a 32-bit integer (`JSAtom`). Atoms are used throughout the QuickJS engine to represent:
+
+- Object property names
+- Variable identifiers
+- Function names
+- Symbol descriptions
+
+By using atoms instead of raw strings, QuickJS can perform fast pointer or integer comparisons instead of expensive string comparisons.
+
+## Type Definition
+
+```c
+typedef uint32_t JSAtom;
+```
+
+Atoms are simple 32-bit unsigned integers that serve as handles to interned strings.
+
+## Why Use Atoms?
+
+### 1. Performance
+
+String comparison is an O(n) operation where n is the length of the string. Atom comparison is O(1) since it's just an integer comparison.
+
+```c
+// Slow: comparing strings
+if (strcmp(str1, str2) == 0) { ... }
+
+// Fast: comparing atoms
+if (atom1 == atom2) { ... }
+```
+
+### 2. Memory Efficiency
+
+When the same string is used multiple times (like property names), atoms ensure only one copy exists in memory. All references use the same atom ID.
+
+```javascript
+// In JavaScript, "name" appears many times
+let obj1 = { name: "Alice" };
+let obj2 = { name: "Bob" };
+let obj3 = { name: "Charlie" };
+
+// In memory, "name" is stored once as an atom
+// All three objects reference the same atom ID
+```
+
+### 3. Standardization
+
+The QuickJS API requires atoms for property access functions, making them a standard part of the API.
+
+## Null Atom
+
+The special value `JS_ATOM_NULL` represents an invalid or uninitialized atom:
+
+```c
+#define JS_ATOM_NULL 0
+```
+
+## Common Use Cases
+
+### Object Property Access
+
+Atoms are primarily used when working with object properties:
+
+```c
+// Get a property using an atom
+JSAtom name_atom = JS_NewAtom(ctx, "name");
+JSValue name = JS_GetProperty(ctx, obj, name_atom);
+JS_FreeAtom(ctx, name_atom);
+```
+
+### Property Definition
+
+```c
+JSAtom prop_atom = JS_NewAtom(ctx, "myProperty");
+JS_DefinePropertyValue(ctx, obj, prop_atom,
+    JS_NewInt32(ctx, 42),
+    JS_PROP_C_W_E);
+JS_FreeAtom(ctx, prop_atom);
+```
+
+### Repeated Property Access
+
+If you access the same property multiple times, create the atom once and reuse it:
+
+```c
+// Efficient: create atom once
+JSAtom name_atom = JS_NewAtom(ctx, "name");
+
+for (int i = 0; i < count; i++) {
+    JSValue name = JS_GetProperty(ctx, objects[i], name_atom);
+    // Process name...
+    JS_FreeValue(ctx, name);
+}
+
+JS_FreeAtom(ctx, name_atom);
+```
+
+### Symbol Property Access
+
+Atoms are also used for symbol-keyed properties:
+
+```c
+JSValue symbol = JS_NewSymbol(ctx, "unique", false);
+JSAtom symbol_atom = JS_ValueToAtom(ctx, symbol);
+
+JS_SetProperty(ctx, obj, symbol_atom, JS_NewInt32(ctx, 100));
+
+JS_FreeAtom(ctx, symbol_atom);
+JS_FreeValue(ctx, symbol);
+```
+
+## Atom Lifecycle
+
+Atoms use reference counting for memory management:
+
+1. **Creation**: When you create an atom, its reference count is 1
+2. **Duplication**: `JS_DupAtom()` increments the reference count
+3. **Freeing**: `JS_FreeAtom()` decrements the reference count
+4. **Deletion**: When the reference count reaches 0, the atom is removed from the intern table
+
+```c
+// Create atom (refcount = 1)
+JSAtom atom = JS_NewAtom(ctx, "property");
+
+// Duplicate atom (refcount = 2)
+JSAtom atom2 = JS_DupAtom(ctx, atom);
+
+// Free first reference (refcount = 1)
+JS_FreeAtom(ctx, atom);
+
+// Free second reference (refcount = 0, atom deleted)
+JS_FreeAtom(ctx, atom2);
+```
+
+## Atoms vs. Strings
+
+| Aspect | Atoms | Strings |
+|--------|-------|----------|
+| **Type** | `JSAtom` (uint32_t) | `JSValue` |
+| **Size** | 4 bytes | 16+ bytes |
+| **Comparison** | O(1) integer compare | O(n) string compare |
+| **Use case** | Property names, identifiers | Text values, output |
+| **Lifecycle** | Manual reference counting | Garbage collected |
+| **Creation** | `JS_NewAtom()` | `JS_NewString()` |
+
+## When to Use Atoms
+
+**Use atoms when:**
+- Accessing object properties
+- Defining properties on objects
+- Working with property enumeration
+- Comparing identifiers repeatedly
+- Performance is critical
+
+**Use strings when:**
+- Displaying text to users
+- Returning string values from functions
+- Working with arbitrary text content
+- The value is not used as a property key
+
+## Performance Tips
+
+1. **Cache atoms for frequently used property names**:
+   ```c
+   // At initialization
+   static JSAtom name_atom = JS_ATOM_NULL;
+   
+   void init(JSContext *ctx) {
+       name_atom = JS_NewAtom(ctx, "name");
+   }
+   
+   void cleanup(JSContext *ctx) {
+       JS_FreeAtom(ctx, name_atom);
+   }
+   ```
+
+2. **Convert between atoms and strings only when needed**:
+   ```c
+   // Efficient
+   JSAtom atom = JS_NewAtom(ctx, "key");
+   JSValue val = JS_GetProperty(ctx, obj, atom);
+   JS_FreeAtom(ctx, atom);
+   
+   // Inefficient
+   JSValue str = JS_NewString(ctx, "key");
+   JSAtom atom = JS_ValueToAtom(ctx, str);
+   JSValue val = JS_GetProperty(ctx, obj, atom);
+   JS_FreeAtom(ctx, atom);
+   JS_FreeValue(ctx, str);
+   ```
+
+3. **Use string-based property functions for one-off access**:
+   ```c
+   // For single access, this is simpler
+   JSValue val = JS_GetPropertyStr(ctx, obj, "name");
+   ```
+
+## See Also
+
+- [Atom Operations](/api/atoms/operations) - Creating, converting, and freeing atoms

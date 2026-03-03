@@ -1,0 +1,242 @@
+---
+title: Object Creation
+description: Create JavaScript objects from C code
+---
+
+# Object Creation
+
+QuickJS provides several functions to create JavaScript objects from C code.
+
+## JS_NewObject
+
+Create a new plain JavaScript object.
+
+```c
+JSValue JS_NewObject(JSContext *ctx);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+
+### Returns
+
+Returns a new empty object.
+
+### Example
+
+```c
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, "QuickJS"));
+JS_SetPropertyStr(ctx, obj, "version", JS_NewInt32(ctx, 1));
+// obj is now { name: "QuickJS", version: 1 }
+```
+
+## JS_NewObjectProto
+
+Create a new object with a specific prototype.
+
+```c
+JSValue JS_NewObjectProto(JSContext *ctx, JSValueConst proto);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `proto` - The prototype object (can be `JS_NULL` for null prototype)
+
+### Returns
+
+Returns a new object with the specified prototype.
+
+### Example
+
+```c
+JSValue proto = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, proto, "greet", JS_NewCFunction(ctx, js_greet, "greet", 0));
+
+JSValue obj = JS_NewObjectProto(ctx, proto);
+JS_FreeValue(ctx, proto);
+// obj now has greet() method via prototype
+```
+
+## JS_NewObjectClass
+
+Create a new object instance of a custom class.
+
+```c
+JSValue JS_NewObjectClass(JSContext *ctx, JSClassID class_id);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `class_id` - The class ID of the object to create
+
+### Returns
+
+Returns a new object of the specified class.
+
+### Example
+
+```c
+JSClassID js_point_class_id;
+
+// During initialization
+JS_NewClassID(rt, &js_point_class_id);
+JS_NewClass(rt, js_point_class_id, &js_point_class);
+
+// Create instance
+JSValue point = JS_NewObjectClass(ctx, js_point_class_id);
+```
+
+## JS_NewObjectProtoClass
+
+Create a new object with both a specific prototype and class.
+
+```c
+JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto,
+                               JSClassID class_id);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `proto` - The prototype object
+- `class_id` - The class ID
+
+### Returns
+
+Returns a new object with the specified prototype and class.
+
+### Example
+
+From `examples/point.c`:
+
+```c
+static JSValue js_point_ctor(JSContext *ctx,
+                             JSValue new_target,
+                             int argc, JSValue *argv)
+{
+    JSPointData *s;
+    JSValue obj = JS_UNDEFINED;
+    JSValue proto;
+
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s)
+        return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &s->x, argv[0]))
+        goto fail;
+    if (JS_ToInt32(ctx, &s->y, argv[1]))
+        goto fail;
+    
+    /* using new_target to get the prototype is necessary when the
+       class is extended. */
+    proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto))
+        goto fail;
+    obj = JS_NewObjectProtoClass(ctx, proto, js_point_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj))
+        goto fail;
+    JS_SetOpaque(obj, s);
+    return obj;
+ fail:
+    js_free(ctx, s);
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
+}
+```
+
+## JS_NewObjectFrom
+
+Create an object from arrays of atoms and values.
+
+```c
+// takes ownership of the values
+JSValue JS_NewObjectFrom(JSContext *ctx, int count,
+                        const JSAtom *props,
+                        const JSValue *values);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `count` - Number of properties
+- `props` - Array of property name atoms
+- `values` - Array of property values (ownership transferred)
+
+### Returns
+
+Returns a new object with the specified properties.
+
+## JS_NewObjectFromStr
+
+Create an object from arrays of string property names and values.
+
+```c
+// takes ownership of the values
+JSValue JS_NewObjectFromStr(JSContext *ctx, int count,
+                            const char **props,
+                            const JSValue *values);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `count` - Number of properties
+- `props` - Array of property name strings
+- `values` - Array of property values (ownership transferred)
+
+### Returns
+
+Returns a new object with the specified properties.
+
+### Example
+
+```c
+const char *props[] = {"x", "y", "z"};
+JSValue values[] = {
+    JS_NewInt32(ctx, 10),
+    JS_NewInt32(ctx, 20),
+    JS_NewInt32(ctx, 30)
+};
+
+JSValue obj = JS_NewObjectFromStr(ctx, 3, props, values);
+// obj is now { x: 10, y: 20, z: 30 }
+// values are automatically freed when object is freed
+```
+
+## JS_ToObject
+
+Convert a value to an object.
+
+```c
+JSValue JS_ToObject(JSContext *ctx, JSValueConst val);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `val` - The value to convert
+
+### Returns
+
+Returns an object representation of the value, or `JS_EXCEPTION` on error.
+
+### Example
+
+```c
+JSValue str = JS_NewString(ctx, "hello");
+JSValue obj = JS_ToObject(ctx, str);
+// obj is now a String object wrapper
+JS_FreeValue(ctx, str);
+JS_FreeValue(ctx, obj);
+```
+
+## Notes
+
+- All `JS_NewObject*` functions return values that must be freed with `JS_FreeValue()`
+- For custom classes, use `JS_NewObjectClass()` or `JS_NewObjectProtoClass()`
+- `JS_NewObjectFrom*` functions take ownership of the values array
+- Use `JS_SetOpaque()` to attach C data to class objects

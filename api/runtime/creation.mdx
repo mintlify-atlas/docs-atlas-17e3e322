@@ -1,0 +1,203 @@
+---
+title: Runtime Creation
+description: Functions for creating and destroying QuickJS runtimes
+---
+
+# Runtime Creation
+
+The runtime represents a JavaScript engine instance with its own object heap. These functions manage the lifecycle of the runtime.
+
+## JS_NewRuntime
+
+Creates a new JavaScript runtime with default memory allocators.
+
+```c
+JSRuntime *JS_NewRuntime(void);
+```
+
+### Returns
+
+Pointer to the newly created runtime, or `NULL` if allocation failed.
+
+### Description
+
+Creates a new `JSRuntime` instance representing an independent JavaScript execution environment. Each runtime has its own object heap and cannot share objects with other runtimes.
+
+<Note>
+Multiple runtimes can exist simultaneously but cannot exchange objects between them. No multi-threading is supported within a single runtime.
+</Note>
+
+### Example
+
+```c
+#include <quickjs.h>
+
+int main() {
+    JSRuntime *rt = JS_NewRuntime();
+    if (!rt) {
+        fprintf(stderr, "Failed to create runtime\n");
+        return 1;
+    }
+    
+    // Create a context and use the runtime
+    JSContext *ctx = JS_NewContext(rt);
+    
+    // ... your code here ...
+    
+    // Cleanup
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return 0;
+}
+```
+
+---
+
+## JS_NewRuntime2
+
+Creates a new JavaScript runtime with custom memory allocators.
+
+```c
+JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
+```
+
+### Parameters
+
+<ParamField path="mf" type="const JSMallocFunctions *" required>
+  Pointer to a structure containing custom memory allocation functions.
+</ParamField>
+
+<ParamField path="opaque" type="void *">
+  User-defined pointer passed to all allocator functions. Can be `NULL`.
+</ParamField>
+
+### Returns
+
+Pointer to the newly created runtime, or `NULL` if allocation failed.
+
+### Description
+
+Creates a runtime with custom memory management. This is useful for:
+- Tracking memory allocations
+- Implementing custom memory pools
+- Integrating with existing memory management systems
+- Adding allocation hooks for debugging
+
+The `JSMallocFunctions` structure must contain:
+
+```c
+typedef struct JSMallocFunctions {
+    void *(*js_calloc)(void *opaque, size_t count, size_t size);
+    void *(*js_malloc)(void *opaque, size_t size);
+    void (*js_free)(void *opaque, void *ptr);
+    void *(*js_realloc)(void *opaque, void *ptr, size_t size);
+    size_t (*js_malloc_usable_size)(const void *ptr);
+} JSMallocFunctions;
+```
+
+### Example
+
+```c
+#include <quickjs.h>
+#include <stdlib.h>
+
+// Custom allocator tracking memory usage
+static size_t total_allocated = 0;
+
+static void *my_malloc(void *opaque, size_t size) {
+    void *ptr = malloc(size);
+    if (ptr) total_allocated += size;
+    return ptr;
+}
+
+static void my_free(void *opaque, void *ptr) {
+    free(ptr);
+}
+
+static void *my_realloc(void *opaque, void *ptr, size_t size) {
+    return realloc(ptr, size);
+}
+
+static void *my_calloc(void *opaque, size_t count, size_t size) {
+    return calloc(count, size);
+}
+
+static size_t my_malloc_usable_size(const void *ptr) {
+    return 0; // Platform-specific implementation needed
+}
+
+int main() {
+    JSMallocFunctions mf = {
+        .js_calloc = my_calloc,
+        .js_malloc = my_malloc,
+        .js_free = my_free,
+        .js_realloc = my_realloc,
+        .js_malloc_usable_size = my_malloc_usable_size
+    };
+    
+    JSRuntime *rt = JS_NewRuntime2(&mf, NULL);
+    if (!rt) {
+        fprintf(stderr, "Failed to create runtime\n");
+        return 1;
+    }
+    
+    // Use the runtime...
+    
+    JS_FreeRuntime(rt);
+    printf("Total allocated: %zu bytes\n", total_allocated);
+    return 0;
+}
+```
+
+---
+
+## JS_FreeRuntime
+
+Frees a JavaScript runtime and all associated resources.
+
+```c
+void JS_FreeRuntime(JSRuntime *rt);
+```
+
+### Parameters
+
+<ParamField path="rt" type="JSRuntime *" required>
+  The runtime to free.
+</ParamField>
+
+### Description
+
+Destroys a runtime and releases all associated memory. This function:
+- Frees all contexts associated with the runtime
+- Runs garbage collection to free all objects
+- Executes any registered finalizers in LIFO order
+- Releases all allocated memory
+
+<Warning>
+All contexts created from this runtime must be freed with `JS_FreeContext()` before calling `JS_FreeRuntime()`. After calling this function, the runtime pointer becomes invalid.
+</Warning>
+
+### Example
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+JSContext *ctx = JS_NewContext(rt);
+
+// Use the runtime and context...
+
+// Proper cleanup order:
+JS_FreeContext(ctx);  // Free context first
+JS_FreeRuntime(rt);   // Then free runtime
+```
+
+### Debug Information
+
+If dump flags are enabled, `JS_FreeRuntime` can print diagnostics:
+
+```c
+// Enable memory leak detection
+JS_SetDumpFlags(rt, JS_DUMP_LEAKS | JS_DUMP_MEM);
+
+// When runtime is freed, diagnostics will be printed
+JS_FreeRuntime(rt);
+```

@@ -1,0 +1,120 @@
+---
+title: Test262 Compliance
+description: Test262 conformance testing and compliance status
+---
+
+# Test262 Compliance
+
+QuickJS-ng runs the official [Test262](https://github.com/tc39/test262) conformance test suite to ensure ECMAScript specification compliance. The Test262 suite is maintained by TC39 and provides comprehensive coverage of JavaScript language features.
+
+## Real-Time Compliance Tracking
+
+<Card title="View Live Compliance Dashboard" href="https://test262.fyi/#|qjs_ng" icon="chart-bar">
+  Track QuickJS-ng's Test262 compliance status in real-time on Test262.fyi
+</Card>
+
+## Test Configuration
+
+QuickJS-ng runs Test262 with the following configuration:
+
+### Test Modes
+- **Strict mode**: Yes
+- **Non-strict mode**: Yes
+- **Async tests**: Yes
+- **Module tests**: Yes
+- **Default mode**: Both strict and non-strict
+
+### Continuous Testing
+
+The Test262 suite is run automatically for every code change:
+- All PRs must pass Test262 before merging
+- Regressions are caught immediately
+- New features are validated against spec requirements
+
+## Supported Features
+
+QuickJS-ng supports a comprehensive set of ECMAScript features validated through Test262:
+
+### Modern Language Features
+- Array methods (find, includes, flat, grouping, etc.)
+- Async functions and async iteration
+- BigInt support
+- Class features (private fields, static blocks, etc.)
+- Destructuring assignment and binding
+- Dynamic imports and modules
+- Generators and iterators
+- Optional chaining and nullish coalescing
+- Promise APIs (allSettled, any, withResolvers, try)
+- Proxy and Reflect
+- RegExp enhancements (lookbehind, named groups, v-flag)
+- Symbol and well-known symbols
+- Template literals
+- Top-level await
+
+### Typed Arrays and Buffers
+- All typed array types (Int8Array through Float64Array)
+- Float16Array
+- Resizable ArrayBuffer
+- SharedArrayBuffer
+- DataView with all accessor methods
+
+### New APIs
+- Error.isError
+- Iterator helpers
+- Math.sumPrecise
+- Promise.try
+- RegExp.escape
+- Set methods (union, intersection, etc.)
+- String methods (at, isWellFormed, toWellFormed, etc.)
+- WeakRef and FinalizationRegistry
+
+## Excluded Features
+
+### Internationalization (Intl)
+
+All Intl APIs are excluded from Test262 testing as they are not supported due to size constraints:
+- Intl.DateTimeFormat
+- Intl.DisplayNames
+- Intl.ListFormat
+- Intl.Locale
+- Intl.NumberFormat
+- Intl.RelativeTimeFormat
+- Intl.Segmenter
+
+### Skipped Proposals
+
+Some stage 3 or experimental features are currently skipped:
+- Decorators
+- Explicit resource management
+- ShadowRealm
+- Temporal
+- Import defer
+- Some RegExp modifiers
+
+## Known Test Failures
+
+QuickJS-ng maintains a list of known test failures in `test262_errors.txt`. As of the latest version, there are approximately 94 known failing tests out of tens of thousands of test cases.
+
+### Categories of Known Issues
+
+1. **Assignment target evaluation order** - Some edge cases around destructuring and property access order
+2. **RegExp v-flag edge cases** - Unicode property escapes with specific emoji sequences
+3. **TypedArray edge cases** - Some spec details around resizable buffers and out-of-bounds access
+4. **Module ambiguous exports** - Specific scenarios with export star patterns
+
+## Performance Considerations
+
+Some tests are intentionally excluded for performance reasons:
+- Slow regex character class escape tests
+- Property escape tests with large character sets
+
+These exclusions match similar decisions made by V8, SpiderMonkey, and JavaScriptCore.
+
+## Spec Compliance Trade-offs
+
+In rare cases, QuickJS-ng makes deliberate spec non-compliance decisions that are also made by other major engines:
+
+- **Global variable assignment** - Performance improvement shared with V8, SpiderMonkey, and JavaScriptCore
+- **Destructuring performance** - Optimizations matching V8's approach
+
+These trade-offs prioritize real-world performance while maintaining compatibility with other engines.

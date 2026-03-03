@@ -1,0 +1,256 @@
+---
+title: Bytecode Compilation
+description: Compile JavaScript to bytecode with QuickJS
+---
+
+# Bytecode Compilation
+
+QuickJS can compile JavaScript to bytecode for faster loading and to protect source code. This tutorial covers different bytecode compilation methods.
+
+## Raw Bytecode Output
+
+<Steps>
+
+<Step title="Create a JavaScript file">
+
+Create `hello.js`:
+
+```javascript
+console.log("Hello World");
+```
+
+</Step>
+
+<Step title="Compile to bytecode">
+
+Use the `-b` flag to generate raw bytecode:
+
+```bash
+qjsc -b -o hello.bin hello.js
+```
+
+This creates a binary file containing the compiled bytecode.
+
+</Step>
+
+<Step title="Run the bytecode">
+
+QuickJS can execute bytecode files directly:
+
+```bash
+qjs hello.bin
+```
+
+**Expected output:**
+
+```
+Hello World
+```
+
+Bytecode files load faster than source files since they skip the parsing step.
+
+</Step>
+
+</Steps>
+
+## Embedding Bytecode in C
+
+<Steps>
+
+<Step title="Generate C code with bytecode">
+
+Use the `-e` flag to generate a complete C program:
+
+```bash
+qjsc -e -o hello.c hello.js
+```
+
+This generates a C file containing:
+- Bytecode as a static array
+- A `main()` function that initializes QuickJS and executes the bytecode
+
+</Step>
+
+<Step title="Compile the C program">
+
+Compile with the QuickJS library:
+
+```bash
+cc hello.c dtoa.c libregexp.c libunicode.c quickjs.c quickjs-libc.c -I. -o hello
+```
+
+</Step>
+
+<Step title="Run the executable">
+
+```bash
+./hello
+```
+
+**Expected output:**
+
+```
+Hello World
+```
+
+The executable is self-contained and doesn't require the original JavaScript source.
+
+</Step>
+
+</Steps>
+
+## Advanced Compilation Options
+
+### Strip Source Code
+
+Remove source code from bytecode to reduce size and protect IP:
+
+```bash
+qjsc -b -s -o hello.bin hello.js
+```
+
+Use `-s` twice to also strip debug information:
+
+```bash
+qjsc -b -s -s -o hello.bin hello.js
+```
+
+**Note:** Stripping debug info removes stack traces and line numbers.
+
+### Set Stack Size
+
+Limit the maximum stack size:
+
+```bash
+qjsc -b -S 524288 -o hello.bin hello.js
+```
+
+Stack size is in bytes (default: 262144 = 256KB).
+
+### Custom C Names
+
+Set the C variable name for the bytecode:
+
+```bash
+qjsc -N my_bytecode -o hello.c hello.js
+```
+
+This names the bytecode array `my_bytecode` instead of the default.
+
+### Set Script Name
+
+Customize the script name used in stack traces:
+
+```bash
+qjsc -b -n "MyApp" -o hello.bin hello.js
+```
+
+## Compiling Modules
+
+### ES6 Module
+
+Compile a module to bytecode:
+
+```bash
+qjsc -m -b -o fib_module.bin fib_module.js
+```
+
+The `-m` flag tells `qjsc` to treat the file as an ES6 module.
+
+### Dynamic Module
+
+Create a dynamically loadable module:
+
+```bash
+qjsc -D my_module -o module.c module.js
+```
+
+The `-D` flag generates code for a module that can be loaded with `import()`.
+
+### External C Module
+
+Add initialization code for an external C module:
+
+```bash
+qjsc -M my_module,my_init -o app.c app.js
+```
+
+This references a C module named `my_module` with init function `my_init`.
+
+## Standalone Executables
+
+QuickJS offers a simpler way to create standalone executables without manual C compilation:
+
+```bash
+qjs -c hello.js -o hello --exe qjs
+```
+
+**Features:**
+- Compiles JavaScript to bytecode
+- Bundles bytecode into a copy of the `qjs` executable
+- Same runtime dependencies as `qjs`
+- No bundling (use `esbuild` or similar for multi-file apps)
+
+**Example with bundling:**
+
+```bash
+# Bundle with esbuild
+npx esbuild my-app/index.js \
+    --bundle \
+    --outfile=app.js \
+    --external:qjs:* \
+    --minify \
+    --target=es2023 \
+    --platform=neutral \
+    --format=esm \
+    --main-fields=main,module
+
+# Create standalone executable
+qjs -c app.js -o app --exe $HOME/bin/qjs
+```
+
+## Debugging Bytecode
+
+Dump bytecode for inspection:
+
+```bash
+qjs -D 0x01 hello.js
+```
+
+**Dump flags:**
+
+- `0x01` - Final bytecode
+- `0x02` - Pass 2 bytecode
+- `0x04` - Pass 1 bytecode
+- `0x10` - Bytecode in hex format
+- `0x20` - Line number table
+
+Combine flags with bitwise OR:
+
+```bash
+qjs -D 0x11 hello.js  # Final bytecode in hex (0x01 | 0x10)
+```
+
+## Performance Considerations
+
+**Bytecode advantages:**
+- Faster loading (no parsing required)
+- Smaller file size (when stripped)
+- Source code protection
+
+**Bytecode trade-offs:**
+- Not human-readable
+- Debugging is harder (especially when stripped)
+- Must recompile for code changes
+
+**Best practices:**
+- Use bytecode for production deployments
+- Keep source files for development
+- Don't strip debug info during development
+- Test bytecode before deploying
+
+## Next Steps
+
+- Learn about [embedding QuickJS](./embedding-basic)
+- Explore [native C functions](./native-functions)
+- Work with [JavaScript modules](./modules)

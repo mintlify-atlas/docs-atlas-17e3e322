@@ -1,0 +1,411 @@
+---
+title: Memory Management
+description: Configure memory limits, custom allocators, and manage QuickJS memory usage
+---
+
+# Memory Management
+
+QuickJS provides fine-grained control over memory allocation, including limits, custom allocators, and garbage collection configuration.
+
+## Memory Limits
+
+### Setting Memory Limits
+
+Prevent runaway scripts from consuming all available memory:
+
+```c
+JSRuntime *rt = JS_NewRuntime();
+
+// Set 256 MB memory limit (0 = unlimited)
+JS_SetMemoryLimit(rt, 256 * 1024 * 1024);
+```
+
+Signature:
+```c
+JS_EXTERN void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
+```
+
+When the limit is reached, allocations fail and JavaScript code throws an out-of-memory exception.
+
+### Monitoring Memory Usage
+
+```c
+JSMemoryUsage usage;
+JS_ComputeMemoryUsage(rt, &usage);
+
+printf("Memory used: %lld bytes\n", usage.memory_used_size);
+printf("Malloc limit: %lld bytes\n", usage.malloc_limit);
+printf("Object count: %lld\n", usage.obj_count);
+printf("String count: %lld\n", usage.str_count);
+```
+
+Signature:
+```c
+typedef struct JSMemoryUsage {
+    int64_t malloc_size, malloc_limit, memory_used_size;
+    int64_t malloc_count;
+    int64_t memory_used_count;
+    int64_t atom_count, atom_size;
+    int64_t str_count, str_size;
+    int64_t obj_count, obj_size;
+    int64_t prop_count, prop_size;
+    int64_t shape_count, shape_size;
+    int64_t js_func_count, js_func_size, js_func_code_size;
+    int64_t js_func_pc2line_count, js_func_pc2line_size;
+    int64_t c_func_count, array_count;
+    int64_t fast_array_count, fast_array_elements;
+    int64_t binary_object_count, binary_object_size;
+} JSMemoryUsage;
+
+JS_EXTERN void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s);
+JS_EXTERN void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt);
+```
+
+### Pretty Print Memory Usage
+
+```c
+JSMemoryUsage usage;
+JS_ComputeMemoryUsage(rt, &usage);
+JS_DumpMemoryUsage(stdout, &usage, rt);
+```
+
+This produces a detailed report including:
+- Total memory allocated
+- Memory used by objects, strings, arrays
+- Function bytecode size
+- Shape and property statistics
+
+## Custom Memory Allocators
+
+### Allocator Interface
+
+Replace QuickJS's default allocator with your own:
+
+```c
+typedef struct JSMallocFunctions {
+    void *(*js_calloc)(void *opaque, size_t count, size_t size);
+    void *(*js_malloc)(void *opaque, size_t size);
+    void (*js_free)(void *opaque, void *ptr);
+    void *(*js_realloc)(void *opaque, void *ptr, size_t size);
+    size_t (*js_malloc_usable_size)(const void *ptr);
+} JSMallocFunctions;
+```
+
+### Custom Allocator Example
+
+```c
+typedef struct {
+    size_t allocated;
+    size_t peak;
+} MyAllocatorState;
+
+static void *my_malloc(void *opaque, size_t size)
+{
+    MyAllocatorState *state = opaque;
+    void *ptr = malloc(size);
+    if (ptr) {
+        state->allocated += size;
+        if (state->allocated > state->peak)
+            state->peak = state->allocated;
+    }
+    return ptr;
+}
+
+static void my_free(void *opaque, void *ptr)
+{
+    free(ptr);
+}
+
+static void *my_realloc(void *opaque, void *ptr, size_t size)
+{
+    return realloc(ptr, size);
+}
+
+static void *my_calloc(void *opaque, size_t count, size_t size)
+{
+    return calloc(count, size);
+}
+
+static size_t my_malloc_usable_size(const void *ptr)
+{
+    // Return allocated size (optional, can return 0)
+    return 0;
+}
+
+// Create runtime with custom allocator
+MyAllocatorState state = { 0, 0 };
+JSMallocFunctions mf = {
+    .js_malloc = my_malloc,
+    .js_free = my_free,
+    .js_realloc = my_realloc,
+    .js_calloc = my_calloc,
+    .js_malloc_usable_size = my_malloc_usable_size,
+};
+
+JSRuntime *rt = JS_NewRuntime2(&mf, &state);
+```
+
+Signature:
+```c
+JS_EXTERN JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
+```
+
+### Opaque Pointer
+
+Access your allocator state:
+
+```c
+void *opaque = JS_GetRuntimeOpaque(rt);
+MyAllocatorState *state = opaque;
+printf("Peak memory: %zu bytes\n", state->peak);
+```
+
+Signatures:
+```c
+JS_EXTERN void *JS_GetRuntimeOpaque(JSRuntime *rt);
+JS_EXTERN void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
+```
+
+## Garbage Collection
+
+### GC Threshold
+
+Control when automatic GC is triggered:
+
+```c
+// Get current threshold
+size_t threshold = JS_GetGCThreshold(rt);
+
+// Set to 1 MB (default is runtime-dependent)
+JS_SetGCThreshold(rt, 1024 * 1024);
+```
+
+Signatures:
+```c
+JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
+JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
+```
+
+The GC runs automatically when memory usage exceeds the threshold.
+
+### Manual GC
+
+Trigger garbage collection manually:
+
+```c
+// Force a GC cycle
+JS_RunGC(rt);
+```
+
+Signature:
+```c
+JS_EXTERN void JS_RunGC(JSRuntime *rt);
+```
+
+### Check Object Liveness
+
+```c
+JSValue obj = JS_NewObject(ctx);
+
+bool alive = JS_IsLiveObject(rt, obj);
+printf("Object is %s\n", alive ? "alive" : "collected");
+
+JS_FreeValue(ctx, obj);
+```
+
+Signature:
+```c
+JS_EXTERN bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj);
+```
+
+## Stack Size Limits
+
+### Maximum Stack Size
+
+Prevent stack overflow in deeply recursive JavaScript:
+
+```c
+// Set 1 MB stack limit (0 = use default)
+JS_SetMaxStackSize(rt, 1024 * 1024);
+```
+
+Signature:
+```c
+JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
+```
+
+Default: `JS_DEFAULT_STACK_SIZE` (1 MB)
+
+### Updating Stack Top
+
+When switching threads, update the stack top:
+
+```c
+// Call when changing thread
+JS_UpdateStackTop(rt);
+```
+
+Signature:
+```c
+JS_EXTERN void JS_UpdateStackTop(JSRuntime *rt);
+```
+
+## Memory Allocation Helpers
+
+### Runtime Allocators
+
+Allocate memory using the runtime's allocator:
+
+```c
+void *ptr = js_malloc_rt(rt, 1024);
+void *zptr = js_mallocz_rt(rt, 1024);  // zeroed
+void *cptr = js_calloc_rt(rt, 10, 100);
+ptr = js_realloc_rt(rt, ptr, 2048);
+js_free_rt(rt, ptr);
+```
+
+Signatures:
+```c
+JS_EXTERN void *js_malloc_rt(JSRuntime *rt, size_t size);
+JS_EXTERN void *js_mallocz_rt(JSRuntime *rt, size_t size);
+JS_EXTERN void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size);
+JS_EXTERN void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size);
+JS_EXTERN void js_free_rt(JSRuntime *rt, void *ptr);
+```
+
+### Context Allocators
+
+Allocate memory from a context:
+
+```c
+void *ptr = js_malloc(ctx, 1024);
+void *zptr = js_mallocz(ctx, 1024);
+char *str = js_strdup(ctx, "hello");
+char *nstr = js_strndup(ctx, "world", 5);
+js_free(ctx, ptr);
+```
+
+Signatures:
+```c
+JS_EXTERN void *js_malloc(JSContext *ctx, size_t size);
+JS_EXTERN void *js_mallocz(JSContext *ctx, size_t size);
+JS_EXTERN char *js_strdup(JSContext *ctx, const char *str);
+JS_EXTERN char *js_strndup(JSContext *ctx, const char *s, size_t n);
+JS_EXTERN void js_free(JSContext *ctx, void *ptr);
+```
+
+## SharedArrayBuffer
+
+### Custom SAB Allocator
+
+Provide a custom allocator for SharedArrayBuffer:
+
+```c
+typedef struct {
+    void *(*sab_alloc)(void *opaque, size_t size);
+    void (*sab_free)(void *opaque, void *ptr);
+    void (*sab_dup)(void *opaque, void *ptr);
+    void *sab_opaque;
+} JSSharedArrayBufferFunctions;
+
+void *my_sab_alloc(void *opaque, size_t size) {
+    return malloc(size);
+}
+
+void my_sab_free(void *opaque, void *ptr) {
+    free(ptr);
+}
+
+void my_sab_dup(void *opaque, void *ptr) {
+    // Increment reference count for shared memory
+}
+
+JSSharedArrayBufferFunctions sab_funcs = {
+    .sab_alloc = my_sab_alloc,
+    .sab_free = my_sab_free,
+    .sab_dup = my_sab_dup,
+    .sab_opaque = NULL,
+};
+
+JS_SetSharedArrayBufferFunctions(rt, &sab_funcs);
+```
+
+Signature:
+```c
+JS_EXTERN void JS_SetSharedArrayBufferFunctions(JSRuntime *rt,
+                                                const JSSharedArrayBufferFunctions *sf);
+```
+
+## Debugging Memory Leaks
+
+### Enable Leak Detection
+
+```c
+// Enable leak dumps on runtime free
+JS_SetDumpFlags(rt, JS_DUMP_LEAKS | JS_DUMP_ATOM_LEAKS | JS_DUMP_MEM);
+
+// ... use runtime ...
+
+// Leaks will be printed to stdout when freeing
+JS_FreeRuntime(rt);
+```
+
+Dump flags (from `quickjs.h`):
+```c
+#define JS_DUMP_LEAKS          0x4000  // dump leaked objects and strings
+#define JS_DUMP_ATOM_LEAKS     0x8000  // dump leaked atoms
+#define JS_DUMP_MEM           0x10000  // dump memory usage
+#define JS_DUMP_OBJECTS       0x20000  // dump objects
+#define JS_DUMP_ATOMS         0x40000  // dump atoms
+#define JS_DUMP_SHAPES        0x80000  // dump shapes
+#define JS_DUMP_GC              0x400  // dump GC occurrences
+#define JS_DUMP_GC_FREE         0x800  // dump objects freed by GC
+```
+
+Signatures:
+```c
+JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
+JS_EXTERN uint64_t JS_GetDumpFlags(JSRuntime *rt);
+```
+
+## Runtime Finalizers
+
+Run cleanup code when the runtime is freed:
+
+```c
+void my_finalizer(JSRuntime *rt, void *arg)
+{
+    MyState *state = arg;
+    printf("Cleaning up state...\n");
+    free(state);
+}
+
+MyState *state = malloc(sizeof(MyState));
+JS_AddRuntimeFinalizer(rt, my_finalizer, state);
+```
+
+Signature:
+```c
+typedef void JSRuntimeFinalizer(JSRuntime *rt, void *arg);
+JS_EXTERN int JS_AddRuntimeFinalizer(JSRuntime *rt,
+                                     JSRuntimeFinalizer *finalizer, void *arg);
+```
+
+<Warning>
+Finalizers run in LIFO order. The runtime is no longer usable at this point.
+</Warning>
+
+## Best Practices
+
+1. **Always set memory limits** for untrusted code
+2. **Monitor memory usage** in production with `JS_ComputeMemoryUsage()`
+3. **Use custom allocators** to integrate with your app's memory system
+4. **Tune GC threshold** based on your workload (lower = more frequent GC)
+5. **Free values promptly** - don't rely solely on GC
+6. **Test with leak detection** enabled during development
+
+## Next Steps
+
+- [Performance](/advanced/performance) - Optimize memory usage patterns
+- [Embedding](/advanced/embedding) - Integrate memory management with your app
+- [Workers](/advanced/workers) - Understand per-worker memory isolation

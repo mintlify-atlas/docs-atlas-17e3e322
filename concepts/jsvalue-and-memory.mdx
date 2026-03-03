@@ -1,0 +1,273 @@
+---
+title: JSValue and memory management
+description: Understanding JSValue representation and reference counting in QuickJS
+---
+
+## Overview
+
+`JSValue` represents a JavaScript value which can be a primitive type or an object. QuickJS uses reference counting for memory management, so it is important to explicitly manage JSValue lifetimes.
+
+## JSValue representation
+
+```c
+typedef uint64_t JSValue;  // On 64-bit systems with NAN boxing
+typedef struct JSValue {   // On other systems
+    JSValueUnion u;
+    int64_t tag;
+} JSValue;
+```
+
+QuickJS uses **NAN boxing** on 64-bit systems to store values efficiently:
+
+- Integers, booleans, and small values are stored inline
+- Objects, strings, and other heap-allocated types are stored as pointers
+- All values fit in a 64-bit word
+
+### Value tags
+
+Each JSValue has a tag identifying its type:
+
+```c
+enum {
+    JS_TAG_BIG_INT     = -9,
+    JS_TAG_SYMBOL      = -8,
+    JS_TAG_STRING      = -7,
+    JS_TAG_OBJECT      = -1,
+    JS_TAG_INT         = 0,
+    JS_TAG_BOOL        = 1,
+    JS_TAG_NULL        = 2,
+    JS_TAG_UNDEFINED   = 3,
+    JS_TAG_FLOAT64     = 8,
+};
+```
+
+<Note>
+Tags with negative values (object, string, symbol, bigint) use reference counting. Primitive types (int, bool, null, undefined) do not require reference counting.
+</Note>
+
+## Reference counting
+
+QuickJS uses reference counting for memory management. This means:
+
+- Each object tracks how many references point to it
+- When you create or copy a reference, increment the count
+- When you're done with a reference, decrement the count
+- When the count reaches zero, the object is freed
+
+### Core functions
+
+```c
+// Increment reference count (duplicate)
+JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
+
+// Decrement reference count (free)
+void JS_FreeValue(JSContext *ctx, JSValue v);
+```
+
+### Ownership rules
+
+<Warning>
+**Critical rule:** A function with a `JSValue` parameter takes ownership; caller must NOT call `JS_FreeValue`. A function with a `JSValueConst` parameter does NOT take ownership; caller MUST call `JS_FreeValue` when done.
+</Warning>
+
+```c
+// Functions that TAKE ownership (JSValue parameter)
+void JS_SetPropertyStr(JSContext *ctx, JSValueConst this_obj, 
+                       const char *prop, JSValue val);  // Takes ownership of val
+
+// Functions that DO NOT take ownership (JSValueConst parameter)  
+JSValue JS_GetPropertyStr(JSContext *ctx, JSValueConst this_obj,
+                          const char *prop);  // Returns new reference
+```
+
+### Return value ownership
+
+- Functions returning `JSValue` transfer ownership to caller
+- Caller **must** call `JS_FreeValue()` on the returned value
+- Functions returning `JSValueConst` do **not** transfer ownership
+
+```c
+// This function returns a NEW value - caller must free it
+JSValue obj = JS_NewObject(ctx);
+// ... use obj ...
+JS_FreeValue(ctx, obj);  // Caller's responsibility
+
+// Getting a property also returns a NEW value
+JSValue prop = JS_GetPropertyStr(ctx, obj, "name");
+// ... use prop ...
+JS_FreeValue(ctx, prop);  // Must free this too
+```
+
+## Common patterns
+
+### Creating and freeing values
+
+```c
+// Create a new object - returns owned value
+JSValue obj = JS_NewObject(ctx);
+
+// Set properties - these functions TAKE ownership
+JS_SetPropertyStr(ctx, obj, "x", JS_NewInt32(ctx, 42));
+JS_SetPropertyStr(ctx, obj, "y", JS_NewInt32(ctx, 100));
+
+// Get property - returns NEW owned value  
+JSValue x = JS_GetPropertyStr(ctx, obj, "x");
+int32_t x_val;
+JS_ToInt32(ctx, &x_val, x);
+printf("x = %d\n", x_val);
+
+// Cleanup - free everything we own
+JS_FreeValue(ctx, x);
+JS_FreeValue(ctx, obj);
+```
+
+### Passing to functions
+
+```c
+JSValue array = JS_NewArray(ctx);
+JSValue element = JS_NewString(ctx, "hello");
+
+// JS_SetPropertyUint32 TAKES ownership of element
+JS_SetPropertyUint32(ctx, array, 0, element);
+// DO NOT free element - it's been consumed!
+
+// If you need to keep using element, duplicate it first
+JSValue element2 = JS_NewString(ctx, "world");
+JSValue dup = JS_DupValue(ctx, element2);
+JS_SetPropertyUint32(ctx, array, 1, element2);  // Consumes element2
+// dup is still valid and must be freed
+JS_FreeValue(ctx, dup);
+
+JS_FreeValue(ctx, array);
+```
+
+### Error handling
+
+```c
+JSValue result = JS_Eval(ctx, code, len, "<eval>", JS_EVAL_TYPE_GLOBAL);
+
+if (JS_IsException(result)) {
+    // Get the exception (returns NEW value)
+    JSValue exception = JS_GetException(ctx);
+    
+    // Handle error...
+    const char *str = JS_ToCString(ctx, exception);
+    fprintf(stderr, "Error: %s\n", str);
+    JS_FreeCString(ctx, str);
+    
+    // Must free exception
+    JS_FreeValue(ctx, exception);
+}
+
+// Must free result regardless
+JS_FreeValue(ctx, result);
+```
+
+## Memory efficiency
+
+### Stack vs. heap allocation
+
+```c
+// Small integers are stored inline (no heap allocation)
+JSValue num = JS_NewInt32(ctx, 42);     // No malloc
+JSValue flag = JS_NewBool(ctx, true);   // No malloc
+JSValue nothing = JS_UNDEFINED;          // No malloc
+
+// These require heap allocation
+JSValue str = JS_NewString(ctx, "hello");  // Allocates string
+JSValue obj = JS_NewObject(ctx);           // Allocates object
+JSValue arr = JS_NewArray(ctx);            // Allocates array
+```
+
+### Constant values
+
+QuickJS provides pre-defined constant values that don't need to be freed:
+
+```c
+#define JS_NULL       JS_MKVAL(JS_TAG_NULL, 0)
+#define JS_UNDEFINED  JS_MKVAL(JS_TAG_UNDEFINED, 0)
+#define JS_FALSE      JS_MKVAL(JS_TAG_BOOL, 0)
+#define JS_TRUE       JS_MKVAL(JS_TAG_BOOL, 1)
+#define JS_EXCEPTION  JS_MKVAL(JS_TAG_EXCEPTION, 0)
+```
+
+These can be used directly without calling `JS_FreeValue()`:
+
+```c
+JSValue result = some_condition ? JS_TRUE : JS_FALSE;
+// No need to free JS_TRUE or JS_FALSE
+```
+
+## Common mistakes
+
+### Double free
+
+```c
+// WRONG - double free
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, parent, "child", obj);  // Consumes obj
+JS_FreeValue(ctx, obj);  // ERROR: already freed!
+```
+
+### Memory leak
+
+```c
+// WRONG - memory leak
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, obj, "x", JS_NewInt32(ctx, 42));
+// Missing: JS_FreeValue(ctx, obj);
+```
+
+### Using after free
+
+```c
+// WRONG - use after free
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, parent, "child", obj);  // Consumes obj
+JS_SetPropertyStr(ctx, obj, "x", JS_NewInt32(ctx, 42));  // ERROR: obj is freed!
+```
+
+**Correct version:**
+
+```c
+JSValue obj = JS_NewObject(ctx);
+JS_SetPropertyStr(ctx, obj, "x", JS_NewInt32(ctx, 42));
+JS_SetPropertyStr(ctx, parent, "child", JS_DupValue(ctx, obj));  // Duplicate first
+JS_FreeValue(ctx, obj);  // Now safe to free our reference
+```
+
+## Garbage collection
+
+While QuickJS uses reference counting, it also has a garbage collector to handle reference cycles:
+
+```c
+// Trigger manual GC
+JS_RunGC(rt);
+
+// Configure GC threshold (bytes)
+JS_SetGCThreshold(rt, 1024 * 1024);  // Run GC when heap exceeds 1 MB
+```
+
+<Info>
+The GC only runs for cyclic structures. Simple reference-counted objects are freed immediately when their count reaches zero.
+</Info>
+
+## Best practices
+
+<Tip>
+**Rule of thumb:** If a function returns a `JSValue`, you own it and must free it. If it takes a `JSValue` parameter, it owns it and you shouldn't free it.
+</Tip>
+
+<Tip>
+**Use-after-free detector:** Build with `-DJS_CHECK_JSVALUE` to enable compile-time checks that help catch ownership bugs.
+</Tip>
+
+<Warning>
+**Always check for exceptions** after calling functions that can fail. Exception values must be freed with `JS_FreeValue()`.
+</Warning>
+
+## See also
+
+- [Reference counting API](/api/values/reference-counting) - Detailed API reference
+- [Value creation](/api/values/creation) - Creating JSValues
+- [Memory management](/advanced/memory-management) - Advanced memory topics

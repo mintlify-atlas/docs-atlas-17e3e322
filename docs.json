@@ -1,122 +1,187 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "QuickJS-ng",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#F59E0B",
+    "light": "#FCD34D",
+    "dark": "#D97706"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/quickjs-ng/quickjs"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/quickjs-ng/quickjs"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Overview",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation",
+              "building"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/runtime-and-contexts",
+              "concepts/jsvalue-and-memory",
+              "concepts/error-handling",
+              "concepts/modules"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "CLI Tools",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "cli/qjs",
+              "cli/qjsc",
+              "cli/standalone-executables"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Standard Library",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "stdlib/overview",
+              "stdlib/globals",
+              "stdlib/std-module",
+              "stdlib/os-module",
+              "stdlib/bjson-module"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/embedding",
+              "advanced/native-modules",
+              "advanced/memory-management",
+              "advanced/performance",
+              "advanced/workers"
+            ]
+          },
+          {
+            "group": "Platform Support",
+            "pages": [
+              "platforms/supported-platforms",
+              "platforms/build-options",
+              "platforms/cross-compilation"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Runtime Management",
             "pages": [
-              "api-reference/introduction"
+              "api/runtime/creation",
+              "api/runtime/configuration",
+              "api/runtime/memory",
+              "api/runtime/garbage-collection"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Context Management",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/context/creation",
+              "api/context/intrinsics",
+              "api/context/realms"
+            ]
+          },
+          {
+            "group": "Value Operations",
+            "pages": [
+              "api/values/creation",
+              "api/values/conversion",
+              "api/values/properties",
+              "api/values/reference-counting"
+            ]
+          },
+          {
+            "group": "Function Calls",
+            "pages": [
+              "api/functions/calling",
+              "api/functions/creating",
+              "api/functions/constructors"
+            ]
+          },
+          {
+            "group": "Object Operations",
+            "pages": [
+              "api/objects/creation",
+              "api/objects/properties",
+              "api/objects/arrays",
+              "api/objects/classes"
+            ]
+          },
+          {
+            "group": "Script Evaluation",
+            "pages": [
+              "api/evaluation/js-eval",
+              "api/evaluation/bytecode",
+              "api/evaluation/modules"
+            ]
+          },
+          {
+            "group": "Exception Handling",
+            "pages": [
+              "api/exceptions/throwing",
+              "api/exceptions/catching",
+              "api/exceptions/error-types"
+            ]
+          },
+          {
+            "group": "Atoms",
+            "pages": [
+              "api/atoms/overview",
+              "api/atoms/operations"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Resources",
+        "groups": [
+          {
+            "group": "Information",
+            "pages": [
+              "resources/ecmascript-features",
+              "resources/differences-from-original",
+              "resources/test262-compliance",
+              "resources/projects-using-quickjs"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/hello-world",
+              "examples/embedding-basic",
+              "examples/native-functions",
+              "examples/modules",
+              "examples/bytecode-compilation"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "contributing/development-guide",
+              "contributing/testing",
+              "contributing/internals"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

@@ -1,0 +1,182 @@
+---
+title: Creating C Functions
+description: Create JavaScript functions backed by C code
+---
+
+# Creating C Functions
+
+C functions can be exposed to JavaScript using QuickJS's function creation APIs.
+
+## JS_NewCFunction
+
+Create a simple JavaScript function backed by C code.
+
+```c
+static inline JSValue JS_NewCFunction(JSContext *ctx, JSCFunction *func,
+                                      const char *name, int length)
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `func` - Pointer to the C function implementation
+- `name` - Name of the function as it appears in JavaScript
+- `length` - The `length` property of the function (expected argument count)
+
+### Returns
+
+Returns a new JavaScript function object.
+
+### C Function Signature
+
+```c
+typedef JSValue JSCFunction(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv);
+```
+
+### Example
+
+From `examples/fib.c`:
+
+```c
+static JSValue js_fib(JSContext *ctx, JSValue this_val,
+                      int argc, JSValue *argv)
+{
+    int n, res;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    res = fib(n);
+    return JS_NewInt32(ctx, res);
+}
+
+// Create the function
+JSValue fib_func = JS_NewCFunction(ctx, js_fib, "fib", 1);
+JS_SetPropertyStr(ctx, global_obj, "fib", fib_func);
+```
+
+## JS_NewCFunction2
+
+Create a JavaScript function with more control over its type and behavior.
+
+```c
+JSValue JS_NewCFunction2(JSContext *ctx, JSCFunction *func,
+                         const char *name,
+                         int length, JSCFunctionEnum cproto, int magic);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `func` - Pointer to the C function
+- `name` - Function name
+- `length` - The `length` property
+- `cproto` - Function type (constructor, getter, setter, etc.)
+- `magic` - Magic value passed to the function
+
+### Function Types
+
+```c
+typedef enum JSCFunctionEnum {
+    JS_CFUNC_generic,
+    JS_CFUNC_generic_magic,
+    JS_CFUNC_constructor,
+    JS_CFUNC_constructor_magic,
+    JS_CFUNC_constructor_or_func,
+    JS_CFUNC_constructor_or_func_magic,
+    JS_CFUNC_f_f,
+    JS_CFUNC_f_f_f,
+    JS_CFUNC_getter,
+    JS_CFUNC_setter,
+    JS_CFUNC_getter_magic,
+    JS_CFUNC_setter_magic,
+    JS_CFUNC_iterator_next,
+} JSCFunctionEnum;
+```
+
+### Example
+
+```c
+JSValue ctor = JS_NewCFunction2(ctx, js_point_ctor, "Point", 2,
+                                JS_CFUNC_constructor, 0);
+```
+
+## JS_SetPropertyFunctionList
+
+Convenience function to add multiple functions to an object at once.
+
+```c
+int JS_SetPropertyFunctionList(JSContext *ctx, JSValueConst obj,
+                               const JSCFunctionListEntry *tab,
+                               int len);
+```
+
+### Parameters
+
+- `ctx` - The JavaScript context
+- `obj` - The object to add properties to
+- `tab` - Array of function list entries
+- `len` - Number of entries in the array
+
+### Returns
+
+Returns 0 on success, -1 on error.
+
+### Example
+
+From `examples/fib.c`:
+
+```c
+static const JSCFunctionListEntry js_fib_funcs[] = {
+    JS_CFUNC_DEF("fib", 1, js_fib),
+};
+
+JS_SetPropertyFunctionList(ctx, global_obj, js_fib_funcs,
+                          countof(js_fib_funcs));
+```
+
+From `examples/point.c`:
+
+```c
+static const JSCFunctionListEntry js_point_proto_funcs[] = {
+    JS_CGETSET_MAGIC_DEF("x", js_point_get_xy, js_point_set_xy, 0),
+    JS_CGETSET_MAGIC_DEF("y", js_point_get_xy, js_point_set_xy, 1),
+    JS_CFUNC_DEF("norm", 0, js_point_norm),
+};
+
+JSValue point_proto = JS_NewObject(ctx);
+JS_SetPropertyFunctionList(ctx, point_proto, js_point_proto_funcs,
+                          countof(js_point_proto_funcs));
+```
+
+## Helper Macros
+
+### JS_CFUNC_DEF
+
+Define a regular function.
+
+```c
+#define JS_CFUNC_DEF(name, length, func1)
+```
+
+### JS_CGETSET_MAGIC_DEF
+
+Define a getter/setter pair with a magic value.
+
+```c
+#define JS_CGETSET_MAGIC_DEF(name, fgetter, fsetter, magic)
+```
+
+### JS_CFUNC_MAGIC_DEF
+
+Define a function with a magic value.
+
+```c
+#define JS_CFUNC_MAGIC_DEF(name, length, func1, magic)
+```
+
+## Notes
+
+- C functions receive constant `JSValueConst` parameters (they don't need to free them)
+- C functions must return a newly allocated `JSValue`
+- Always return `JS_EXCEPTION` on error after setting an exception with `JS_Throw*` functions
+- There is no implicit stack - parameters are passed as normal C function arguments

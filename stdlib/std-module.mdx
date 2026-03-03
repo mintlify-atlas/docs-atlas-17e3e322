@@ -1,0 +1,621 @@
+---
+title: qjs:std Module
+description: Standard library module providing file I/O, environment variables, and utilities
+---
+
+The `qjs:std` module provides wrappers to C standard library functions (`stdlib.h` and `stdio.h`) along with additional utilities for file operations, script evaluation, and environment management.
+
+```javascript
+import * as std from 'qjs:std';
+```
+
+## Process Control
+
+### `exit(n)`
+
+Terminates the process with the specified exit code.
+
+<ParamField path="n" type="number" required>
+  Exit code (0 for success, non-zero for error)
+</ParamField>
+
+```javascript
+import * as std from 'qjs:std';
+
+if (errorCondition) {
+  std.exit(1);
+}
+```
+
+### `gc()`
+
+Manually invokes the garbage collector cycle removal algorithm.
+
+<ResponseField name="return" type="undefined">
+  No return value
+</ResponseField>
+
+```javascript
+std.gc(); // Force garbage collection
+```
+
+## Script Evaluation
+
+### `evalScript(str, options)`
+
+Evaluates a string as JavaScript code in the global scope.
+
+<ParamField path="str" type="string" required>
+  The JavaScript code to evaluate
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration object
+  
+  <ParamField path="backtrace_barrier" type="boolean" default={false}>
+    If true, error backtraces do not list stack frames below the evalScript call
+  </ParamField>
+  
+  <ParamField path="async" type="boolean" default={false}>
+    If true, `await` is accepted in the script and a promise is returned
+  </ParamField>
+</ParamField>
+
+<ResponseField name="return" type="any">
+  The result of the evaluated code, or a Promise if `async` is true
+</ResponseField>
+
+```javascript
+import * as std from 'qjs:std';
+
+// Synchronous evaluation
+const result = std.evalScript('2 + 2');
+console.log(result); // 4
+
+// Async evaluation
+const promise = std.evalScript('await fetch(url)', { async: true });
+const asyncResult = await promise.value;
+```
+
+### `loadScript(filename)`
+
+Loads and evaluates a JavaScript file in the global scope.
+
+<ParamField path="filename" type="string" required>
+  Path to the JavaScript file to load
+</ParamField>
+
+```javascript
+std.loadScript('config.js');
+```
+
+## File Operations
+
+### `loadFile(filename, options)`
+
+Loads a file and returns its contents.
+
+<ParamField path="filename" type="string" required>
+  Path to the file to load
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration
+  
+  <ParamField path="binary" type="boolean" default={false}>
+    If true, returns a Uint8Array instead of a string
+  </ParamField>
+</ParamField>
+
+<ResponseField name="return" type="string | Uint8Array | null">
+  File contents as a UTF-8 string or Uint8Array if binary mode. Returns `null` on I/O error.
+</ResponseField>
+
+```javascript
+import * as std from 'qjs:std';
+
+// Load text file
+const text = std.loadFile('data.txt');
+if (text === null) {
+  console.log('Failed to read file');
+}
+
+// Load binary file
+const buffer = std.loadFile('image.png', { binary: true });
+```
+
+### `writeFile(filename, data)`
+
+Writes data to a file, creating it if it doesn't exist.
+
+<ParamField path="filename" type="string" required>
+  Path to the file to write
+</ParamField>
+
+<ParamField path="data" type="string | TypedArray | ArrayBuffer">
+  Data to write. Strings are written in text mode (UTF-8), binary data in binary mode. `undefined` creates an empty file.
+</ParamField>
+
+<ResponseField name="return" type="undefined">
+  Throws an exception on error
+</ResponseField>
+
+```javascript
+// Write text
+std.writeFile('output.txt', 'Hello World');
+
+// Write binary data
+const buffer = new Uint8Array([0x89, 0x50, 0x4E, 0x47]);
+std.writeFile('data.bin', buffer);
+```
+
+<Note>
+On Windows, files are opened in text mode for strings and binary mode for typed arrays. This affects line ending conversion.
+</Note>
+
+## FILE Object
+
+### `open(filename, flags, errorObj)`
+
+Opens a file using C's `fopen()` function.
+
+<ParamField path="filename" type="string" required>
+  Path to the file
+</ParamField>
+
+<ParamField path="flags" type="string" required>
+  File mode: `"r"`, `"w"`, `"a"`, `"r+"`, `"w+"`, `"a+"`, with optional `"b"` for binary
+</ParamField>
+
+<ParamField path="errorObj" type="object">
+  If provided, its `errno` property is set to the error code (0 on success)
+</ParamField>
+
+<ResponseField name="return" type="FILE | null">
+  FILE object or null on error
+</ResponseField>
+
+```javascript
+import * as std from 'qjs:std';
+
+const err = {};
+const f = std.open('data.txt', 'r', err);
+if (!f) {
+  console.log('Error:', std.strerror(err.errno));
+} else {
+  const content = f.readAsString();
+  f.close();
+}
+```
+
+### `popen(command, flags, errorObj)`
+
+Opens a process by creating a pipe (Unix/Linux/macOS only).
+
+<ParamField path="command" type="string" required>
+  Command to execute
+</ParamField>
+
+<ParamField path="flags" type="string" required>
+  Either `"r"` (read) or `"w"` (write)
+</ParamField>
+
+<ParamField path="errorObj" type="object">
+  Optional error object
+</ParamField>
+
+```javascript
+const f = std.popen('ls -l', 'r');
+const output = f.readAsString();
+f.close();
+```
+
+<Warning>
+Not available on Windows and WASI platforms.
+</Warning>
+
+### `fdopen(fd, flags, errorObj)`
+
+Opens a file from a file descriptor.
+
+<ParamField path="fd" type="number" required>
+  File descriptor
+</ParamField>
+
+<ParamField path="flags" type="string" required>
+  File mode flags
+</ParamField>
+
+```javascript
+import * as os from 'qjs:os';
+import * as std from 'qjs:std';
+
+const fd = os.open('file.txt', os.O_RDONLY);
+const f = std.fdopen(fd, 'r');
+const content = f.readAsString();
+f.close();
+```
+
+### `tmpfile(errorObj)`
+
+Creates a temporary file that is automatically deleted when closed.
+
+<ParamField path="errorObj" type="object">
+  Optional error object
+</ParamField>
+
+<ResponseField name="return" type="FILE | null">
+  FILE object or null on error
+</ResponseField>
+
+```javascript
+const temp = std.tmpfile();
+temp.puts('temporary data');
+temp.seek(0, std.SEEK_SET);
+const data = temp.readAsString();
+temp.close(); // File is automatically deleted
+```
+
+### FILE Methods
+
+All FILE objects have the following methods:
+
+#### `close()`
+
+Closes the file.
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+#### `puts(str)`
+
+Writes a string to the file with UTF-8 encoding.
+
+<ParamField path="str" type="string" required>
+  String to write
+</ParamField>
+
+#### `printf(fmt, ...args)`
+
+Writes formatted output to the file.
+
+<ParamField path="fmt" type="string" required>
+  Format string (C printf syntax)
+</ParamField>
+
+<ParamField path="...args" type="any">
+  Values to format
+</ParamField>
+
+```javascript
+f.printf('Value: %d, Name: %s\n', 42, 'test');
+```
+
+#### `flush()`
+
+Flushes the file's write buffer.
+
+#### `seek(offset, whence)`
+
+Seeks to a position in the file.
+
+<ParamField path="offset" type="number | BigInt" required>
+  Byte offset
+</ParamField>
+
+<ParamField path="whence" type="number" required>
+  `std.SEEK_SET`, `std.SEEK_CUR`, or `std.SEEK_END`
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 0 on success or `-errno` on error
+</ResponseField>
+
+#### `tell()`
+
+Returns the current file position as a number.
+
+#### `tello()`
+
+Returns the current file position as a BigInt.
+
+#### `eof()`
+
+Returns true if at end of file.
+
+#### `fileno()`
+
+Returns the OS file handle (file descriptor).
+
+#### `error()`
+
+Returns true if an error occurred.
+
+#### `clearerr()`
+
+Clears the error indication.
+
+#### `read(buffer, position, length)`
+
+Reads bytes into an ArrayBuffer.
+
+<ParamField path="buffer" type="ArrayBuffer" required>
+  Destination buffer
+</ParamField>
+
+<ParamField path="position" type="number" default={0}>
+  Byte position in buffer to start writing
+</ParamField>
+
+<ParamField path="length" type="number" default="buffer.length">
+  Number of bytes to read
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Number of bytes actually read
+</ResponseField>
+
+#### `write(buffer, position, length)`
+
+Writes bytes from an ArrayBuffer or string.
+
+<ParamField path="buffer" type="ArrayBuffer | string" required>
+  Source buffer or string
+</ParamField>
+
+<ParamField path="position" type="number" default={0}>
+  Byte position to start reading from
+</ParamField>
+
+<ParamField path="length" type="number" default="buffer.length">
+  Number of bytes to write
+</ParamField>
+
+#### `getline()`
+
+Reads the next line from the file, excluding the newline character.
+
+<ResponseField name="return" type="string | null">
+  The line as a string, or null at EOF
+</ResponseField>
+
+```javascript
+while (true) {
+  const line = f.getline();
+  if (line === null) break;
+  console.log(line);
+}
+```
+
+#### `readAsString(max_size)`
+
+Reads the file contents as a UTF-8 string.
+
+<ParamField path="max_size" type="number">
+  Maximum bytes to read (reads entire file if omitted)
+</ParamField>
+
+#### `readAsArrayBuffer(max_size)`
+
+Reads the file contents as an ArrayBuffer.
+
+<ParamField path="max_size" type="number">
+  Maximum bytes to read (reads entire file if omitted)
+</ParamField>
+
+#### `getByte()`
+
+Reads one byte.
+
+<ResponseField name="return" type="number">
+  The byte value (0-255) or -1 at EOF
+</ResponseField>
+
+#### `putByte(c)`
+
+Writes one byte.
+
+<ParamField path="c" type="number" required>
+  Byte value to write (0-255)
+</ParamField>
+
+### Standard Streams
+
+<ParamField path="std.in" type="FILE">
+  Standard input
+</ParamField>
+
+<ParamField path="std.out" type="FILE">
+  Standard output
+</ParamField>
+
+<ParamField path="std.err" type="FILE">
+  Standard error
+</ParamField>
+
+```javascript
+std.out.puts('Hello\n');
+std.err.puts('Error message\n');
+
+const line = std.in.getline();
+```
+
+## Output Functions
+
+### `puts(str)`
+
+Equivalent to `std.out.puts(str)`.
+
+### `printf(fmt, ...args)`
+
+Equivalent to `std.out.printf(fmt, ...args)`.
+
+### `sprintf(fmt, ...args)`
+
+Formats a string like C's `sprintf()`.
+
+<ResponseField name="return" type="string">
+  Formatted string
+</ResponseField>
+
+```javascript
+const msg = std.sprintf('Value: %d', 42);
+```
+
+## Environment Variables
+
+### `getenv(name)`
+
+Returns the value of an environment variable.
+
+<ParamField path="name" type="string" required>
+  Environment variable name
+</ParamField>
+
+<ResponseField name="return" type="string | undefined">
+  Variable value or undefined if not set
+</ResponseField>
+
+```javascript
+const home = std.getenv('HOME');
+const path = std.getenv('PATH');
+```
+
+### `setenv(name, value)`
+
+Sets an environment variable.
+
+<ParamField path="name" type="string" required>
+  Variable name
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  Variable value
+</ParamField>
+
+```javascript
+std.setenv('MY_VAR', 'my_value');
+```
+
+### `unsetenv(name)`
+
+Deletes an environment variable.
+
+<ParamField path="name" type="string" required>
+  Variable name to delete
+</ParamField>
+
+```javascript
+std.unsetenv('MY_VAR');
+```
+
+### `getenviron()`
+
+Returns all environment variables as an object.
+
+<ResponseField name="return" type="object">
+  Object with environment variable names as keys and values as strings
+</ResponseField>
+
+```javascript
+const env = std.getenviron();
+console.log(env.PATH);
+console.log(env.HOME);
+```
+
+## Error Handling
+
+### `std.Error`
+
+Enumeration object containing common error codes:
+
+- `EINVAL` - Invalid argument
+- `EIO` - I/O error
+- `EACCES` - Permission denied
+- `EEXIST` - File exists
+- `ENOSPC` - No space left
+- `ENOSYS` - Function not implemented
+- `EBUSY` - Device or resource busy
+- `ENOENT` - No such file or directory
+- `EPERM` - Operation not permitted
+- `EPIPE` - Broken pipe
+
+```javascript
+if (errno === std.Error.ENOENT) {
+  console.log('File not found');
+}
+```
+
+### `strerror(errno)`
+
+Returns a human-readable error message.
+
+<ParamField path="errno" type="number" required>
+  Error code
+</ParamField>
+
+<ResponseField name="return" type="string">
+  Error description
+</ResponseField>
+
+```javascript
+const err = {};
+const f = std.open('missing.txt', 'r', err);
+if (!f) {
+  console.log(std.strerror(err.errno));
+  // Output: No such file or directory
+}
+```
+
+## Seek Constants
+
+- `std.SEEK_SET` - Seek from beginning of file
+- `std.SEEK_CUR` - Seek from current position
+- `std.SEEK_END` - Seek from end of file
+
+## Network Utilities
+
+### `urlGet(url, options)`
+
+Downloads a URL using the `curl` command (requires curl to be installed).
+
+<ParamField path="url" type="string" required>
+  URL to download
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration
+  
+  <ParamField path="binary" type="boolean" default={false}>
+    If true, returns ArrayBuffer instead of string
+  </ParamField>
+  
+  <ParamField path="full" type="boolean" default={false}>
+    If true, returns object with response, responseHeaders, and status
+  </ParamField>
+</ParamField>
+
+<ResponseField name="return" type="string | ArrayBuffer | object | null">
+  Response data, or null on error. If `full` is true, returns object with `response`, `responseHeaders`, and `status` properties.
+</ResponseField>
+
+```javascript
+// Simple GET
+const html = std.urlGet('https://example.com');
+
+// Binary data
+const data = std.urlGet('https://example.com/file.bin', { binary: true });
+
+// Full response
+const result = std.urlGet('https://api.example.com/data', { full: true });
+if (result.response !== null) {
+  console.log('Status:', result.status);
+  console.log('Headers:', result.responseHeaders);
+  console.log('Body:', result.response);
+}
+```
+
+<Warning>
+Not available on WASI. Requires `curl` to be installed on the system.
+</Warning>

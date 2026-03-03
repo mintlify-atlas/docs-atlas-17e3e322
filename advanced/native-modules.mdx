@@ -1,0 +1,413 @@
+---
+title: Creating Native C Modules
+description: Build native ES6 modules in C that can be loaded dynamically
+---
+
+# Creating Native C Modules
+
+QuickJS supports native ES6 modules written in C that can be dynamically or statically linked. This allows you to expose C functionality to JavaScript while maintaining the ES6 module interface.
+
+## Module Structure
+
+Every native module must export a `js_init_module` function that QuickJS calls when loading the module:
+
+```c
+JS_MODULE_EXTERN JSModuleDef *js_init_module(JSContext *ctx, const char *module_name);
+```
+
+<Note>
+The `JS_MODULE_EXTERN` macro ensures proper symbol visibility on Windows and other platforms.
+</Note>
+
+## Simple Function Module
+
+Here's a complete example from `examples/fib.c` that exports a Fibonacci function:
+
+<Steps>
+
+### Write the C implementation
+
+```c
+#include <quickjs.h>
+
+#define countof(x) (sizeof(x) / sizeof((x)[0]))
+
+static int fib(int n)
+{
+    if (n <= 0)
+        return 0;
+    else if (n == 1)
+        return 1;
+    else
+        return fib(n - 1) + fib(n - 2);
+}
+```
+
+### Create the JavaScript wrapper
+
+```c
+static JSValue js_fib(JSContext *ctx, JSValue this_val,
+                      int argc, JSValue *argv)
+{
+    int n, res;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    res = fib(n);
+    return JS_NewInt32(ctx, res);
+}
+```
+
+### Define the function list
+
+```c
+static const JSCFunctionListEntry js_fib_funcs[] = {
+    JS_CFUNC_DEF("fib", 1, js_fib),
+};
+```
+
+### Create the module init function
+
+```c
+static int js_fib_init(JSContext *ctx, JSModuleDef *m)
+{
+    return JS_SetModuleExportList(ctx, m, js_fib_funcs,
+                                  countof(js_fib_funcs));
+}
+```
+
+### Export the module entry point
+
+```c
+JS_MODULE_EXTERN JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
+{
+    JSModuleDef *m;
+    m = JS_NewCModule(ctx, module_name, js_fib_init);
+    if (!m)
+        return NULL;
+    JS_AddModuleExportList(ctx, m, js_fib_funcs, countof(js_fib_funcs));
+    return m;
+}
+```
+
+</Steps>
+
+Signatures:
+```c
+JS_EXTERN JSModuleDef *JS_NewCModule(JSContext *ctx, const char *name_str,
+                                     JSModuleInitFunc *func);
+JS_EXTERN int JS_AddModuleExportList(JSContext *ctx, JSModuleDef *m,
+                                      const JSCFunctionListEntry *tab, int len);
+JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
+                                      const JSCFunctionListEntry *tab, int len);
+```
+
+## Module with Classes
+
+The `examples/point.c` example demonstrates creating a module with a custom class:
+
+<Steps>
+
+### Define the C structure
+
+```c
+typedef struct {
+    int x;
+    int y;
+} JSPointData;
+
+static JSClassID js_point_class_id;
+```
+
+### Create the finalizer
+
+```c
+static void js_point_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSPointData *s = JS_GetOpaque(val, js_point_class_id);
+    /* Note: 's' can be NULL in case JS_SetOpaque() was not called */
+    js_free_rt(rt, s);
+}
+```
+
+### Implement the constructor
+
+```c
+static JSValue js_point_ctor(JSContext *ctx,
+                             JSValue new_target,
+                             int argc, JSValue *argv)
+{
+    JSPointData *s;
+    JSValue obj = JS_UNDEFINED;
+    JSValue proto;
+
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s)
+        return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &s->x, argv[0]))
+        goto fail;
+    if (JS_ToInt32(ctx, &s->y, argv[1]))
+        goto fail;
+    
+    /* using new_target to get the prototype is necessary when the
+       class is extended. */
+    proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto))
+        goto fail;
+    obj = JS_NewObjectProtoClass(ctx, proto, js_point_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj))
+        goto fail;
+    JS_SetOpaque(obj, s);
+    return obj;
+ fail:
+    js_free(ctx, s);
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
+}
+```
+
+### Add getters and setters
+
+```c
+static JSValue js_point_get_xy(JSContext *ctx, JSValue this_val, int magic)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    if (magic == 0)
+        return JS_NewInt32(ctx, s->x);
+    else
+        return JS_NewInt32(ctx, s->y);
+}
+
+static JSValue js_point_set_xy(JSContext *ctx, JSValue this_val,
+                               JSValue val, int magic)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    int v;
+    if (!s)
+        return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &v, val))
+        return JS_EXCEPTION;
+    if (magic == 0)
+        s->x = v;
+    else
+        s->y = v;
+    return JS_UNDEFINED;
+}
+```
+
+### Add methods
+
+```c
+static JSValue js_point_norm(JSContext *ctx, JSValue this_val,
+                             int argc, JSValue *argv)
+{
+    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    return JS_NewFloat64(ctx, sqrt((double)s->x * s->x + (double)s->y * s->y));
+}
+```
+
+### Define the class
+
+```c
+static JSClassDef js_point_class = {
+    "Point",
+    .finalizer = js_point_finalizer,
+};
+
+static const JSCFunctionListEntry js_point_proto_funcs[] = {
+    JS_CGETSET_MAGIC_DEF("x", js_point_get_xy, js_point_set_xy, 0),
+    JS_CGETSET_MAGIC_DEF("y", js_point_get_xy, js_point_set_xy, 1),
+    JS_CFUNC_DEF("norm", 0, js_point_norm),
+};
+```
+
+### Initialize the module
+
+```c
+static int js_point_init(JSContext *ctx, JSModuleDef *m)
+{
+    JSValue point_proto, point_class;
+    JSRuntime *rt = JS_GetRuntime(ctx);
+
+    /* create the Point class */
+    JS_NewClassID(rt, &js_point_class_id);
+    JS_NewClass(rt, js_point_class_id, &js_point_class);
+
+    point_proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, point_proto, js_point_proto_funcs,
+                               countof(js_point_proto_funcs));
+
+    point_class = JS_NewCFunction2(ctx, js_point_ctor, "Point", 2,
+                                   JS_CFUNC_constructor, 0);
+    /* set proto.constructor and ctor.prototype */
+    JS_SetConstructor(ctx, point_class, point_proto);
+    JS_SetClassProto(ctx, js_point_class_id, point_proto);
+
+    JS_SetModuleExport(ctx, m, "Point", point_class);
+    return 0;
+}
+```
+
+### Export the module
+
+```c
+JS_MODULE_EXTERN JSModuleDef *js_init_module(JSContext *ctx,
+                                             const char *module_name)
+{
+    JSModuleDef *m;
+    m = JS_NewCModule(ctx, module_name, js_point_init);
+    if (!m)
+        return NULL;
+    JS_AddModuleExport(ctx, m, "Point");
+    return m;
+}
+```
+
+</Steps>
+
+Signatures for class API:
+```c
+JS_EXTERN JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id);
+JS_EXTERN int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def);
+JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj);
+JS_EXTERN int JS_SetOpaque(JSValueConst obj, void *opaque);
+JS_EXTERN void *JS_GetOpaque2(JSContext *ctx, JSValueConst obj, JSClassID class_id);
+```
+
+## Building Modules
+
+### Dynamic Module (Shared Library)
+
+Using CMake (from `CMakeLists.txt`):
+
+```cmake
+add_library(fib MODULE examples/fib.c)
+set_target_properties(fib PROPERTIES PREFIX "")
+target_link_libraries(fib PRIVATE qjs_module_lib)
+
+if(APPLE)
+    target_link_options(fib PRIVATE -undefined dynamic_lookup)
+endif()
+```
+
+Using gcc/clang directly:
+
+```bash
+# Linux
+gcc -shared -fPIC -o fib.so fib.c -I/path/to/quickjs
+
+# macOS
+gcc -dynamiclib -undefined dynamic_lookup -o fib.so fib.c -I/path/to/quickjs
+
+# Windows (MinGW)
+gcc -shared -o fib.dll fib.c -I/path/to/quickjs -lqjs
+```
+
+<Note>
+On Windows, you must define `QUICKJS_NG_MODULE_BUILD` and link against the QuickJS library.
+</Note>
+
+### Static Linking
+
+Compile the module source with your application:
+
+```bash
+gcc -o myapp myapp.c fib.c -lqjs -lm -lpthread
+```
+
+Register it before use:
+
+```c
+extern JSModuleDef *js_init_module_fib(JSContext *ctx, const char *name);
+
+// In your initialization code:
+js_init_module_fib(ctx, "fib");
+```
+
+## Using Modules in JavaScript
+
+### Dynamic Module
+
+```javascript
+import { fib } from './fib.so';
+
+console.log(fib(10)); // 55
+```
+
+### Class Module
+
+```javascript
+import { Point } from './point.so';
+
+const p = new Point(3, 4);
+console.log(p.x);      // 3
+console.log(p.y);      // 4
+console.log(p.norm()); // 5
+
+p.x = 5;
+p.y = 12;
+console.log(p.norm()); // 13
+```
+
+## Function List Entry Macros
+
+QuickJS provides convenient macros for defining exports:
+
+```c
+// Simple function
+JS_CFUNC_DEF("name", argc, c_func)
+
+// Function with magic number
+JS_CFUNC_MAGIC_DEF("name", argc, c_func, magic)
+
+// Getter/setter
+JS_CGETSET_DEF("prop", getter, setter)
+JS_CGETSET_MAGIC_DEF("prop", getter, setter, magic)
+
+// Constants
+JS_PROP_INT32_DEF("NAME", value, flags)
+JS_PROP_DOUBLE_DEF("PI", 3.14159, JS_PROP_CONFIGURABLE)
+JS_PROP_STRING_DEF("VERSION", "1.0.0", JS_PROP_CONFIGURABLE)
+```
+
+## Advanced: GC Mark Function
+
+If your opaque data contains JSValue references, provide a GC mark function:
+
+```c
+typedef struct {
+    JSValue callback;
+    void *user_data;
+} MyData;
+
+static void js_mydata_gc_mark(JSRuntime *rt, JSValueConst val,
+                              JS_MarkFunc *mark_func)
+{
+    MyData *data = JS_GetOpaque(val, js_mydata_class_id);
+    if (data) {
+        JS_MarkValue(rt, data->callback, mark_func);
+    }
+}
+
+static JSClassDef js_mydata_class = {
+    "MyData",
+    .finalizer = js_mydata_finalizer,
+    .gc_mark = js_mydata_gc_mark,
+};
+```
+
+Signature:
+```c
+typedef void JSClassGCMark(JSRuntime *rt, JSValueConst val,
+                           JS_MarkFunc *mark_func);
+```
+
+## Next Steps
+
+- [Memory Management](/advanced/memory-management) - Understand memory allocation in modules
+- [Performance](/advanced/performance) - Optimize native module performance
+- [Embedding](/advanced/embedding) - Integrate modules with embedded runtime

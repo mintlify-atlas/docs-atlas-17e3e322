@@ -1,0 +1,204 @@
+---
+title: JavaScript Modules
+description: Creating and using ES6 modules in QuickJS
+---
+
+# Creating and Using Modules
+
+QuickJS supports ES6 modules with `import` and `export` statements. This tutorial shows how to create and use both JavaScript and native C modules.
+
+## JavaScript Modules
+
+<Steps>
+
+<Step title="Create a module">
+
+Create `fib_module.js` with an exported function:
+
+```javascript
+/* fib module */
+export function fib(n)
+{
+    if (n <= 0)
+        return 0;
+    else if (n == 1)
+        return 1;
+    else
+        return fib(n - 1) + fib(n - 2);
+}
+```
+
+The `export` keyword makes the `fib` function available to other modules.
+
+</Step>
+
+<Step title="Import and use the module">
+
+Create `hello_module.js` that imports the function:
+
+```javascript
+/* example of JS module */
+
+import { fib } from "./fib_module.js";
+
+console.log("Hello World");
+console.log("fib(10)=", fib(10));
+```
+
+The `import` statement loads the module and destructures the exported function.
+
+</Step>
+
+<Step title="Run the module">
+
+Execute with the `-m` flag to enable module mode:
+
+```bash
+qjs -m hello_module.js
+```
+
+**Expected output:**
+
+```
+Hello World
+fib(10)= 55
+```
+
+<Note>
+QuickJS auto-detects module mode based on `import`/`export` statements, so the `-m` flag is usually optional.
+</Note>
+
+</Step>
+
+</Steps>
+
+## Native C Modules
+
+You can also import native modules compiled as shared libraries.
+
+<Steps>
+
+<Step title="Create a cross-platform import">
+
+Create `test_fib.js` that imports a native module:
+
+```javascript
+/* example of JS module importing a C module */
+import * as os from "qjs:os";
+
+const isWin = os.platform === 'win32';
+const { fib } = await import(`./fib.${isWin ? 'dll' : 'so'}`);
+
+console.log("Hello World");
+console.log("fib(10)=", fib(10));
+```
+
+**Key features:**
+
+- Uses `qjs:os` to detect the platform
+- Dynamically imports `.so` on Unix or `.dll` on Windows
+- Uses `await import()` for dynamic imports
+
+</Step>
+
+<Step title="Compile the native module">
+
+First, create the C module (see [Native Functions](./native-functions) guide).
+
+Then compile it as a shared library:
+
+**On Linux/macOS:**
+```bash
+cc -fPIC -shared -o fib.so fib.c -I. -L. -lquickjs
+```
+
+**On Windows:**
+```bash
+cc -shared -o fib.dll fib.c -I. -L. -lquickjs
+```
+
+</Step>
+
+<Step title="Run with standard library">
+
+Execute with the `--std` flag to enable the `qjs:os` module:
+
+```bash
+qjs --std test_fib.js
+```
+
+**Expected output:**
+
+```
+Hello World
+fib(10)= 55
+```
+
+</Step>
+
+</Steps>
+
+## Built-in Modules
+
+QuickJS provides built-in modules accessible with the `qjs:` prefix:
+
+- `qjs:os` - Operating system interfaces (file I/O, processes, etc.)
+- `qjs:std` - Standard utilities (console, setTimeout, etc.)
+- `qjs:bjson` - Binary JSON encoding/decoding
+
+**Example:**
+
+```javascript
+import * as os from "qjs:os";
+import * as std from "qjs:std";
+
+console.log("Platform:", os.platform);
+console.log("Current directory:", os.getcwd());
+```
+
+Enable built-in modules with the `--std` flag:
+
+```bash
+qjs --std script.js
+```
+
+## Module Resolution
+
+QuickJS resolves module specifiers as follows:
+
+1. **Relative paths** (`./`, `../`) - Resolved relative to the importing file
+2. **Built-in modules** (`qjs:*`) - QuickJS standard library
+3. **Absolute paths** (`/path/to/module`) - Loaded directly
+4. **Bare specifiers** (`module-name`) - Not supported by default
+
+## Dynamic Imports
+
+Use `await import()` for runtime module loading:
+
+```javascript
+// Conditional loading
+if (condition) {
+    const module = await import("./optional-module.js");
+    module.doSomething();
+}
+
+// Dynamic path
+const modulePath = `./module-${version}.js`;
+const module = await import(modulePath);
+```
+
+## Compiling Modules
+
+Compile a module to bytecode:
+
+```bash
+qjsc -m -o output.c module.js
+```
+
+The `-m` flag tells `qjsc` to compile as an ES6 module.
+
+## Next Steps
+
+- Learn about [native C functions](./native-functions)
+- Explore [bytecode compilation](./bytecode-compilation)
+- Read about [embedding QuickJS](./embedding-basic)
