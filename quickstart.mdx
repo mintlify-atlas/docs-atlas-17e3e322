@@ -1,0 +1,304 @@
+---
+title: Quickstart
+description: Get started with QuickJS-ng in 5 minutes
+---
+
+Get QuickJS-ng running on your system and execute your first JavaScript code.
+
+## Installation
+
+<Steps>
+  <Step title="Install QuickJS-ng">
+    Choose your preferred installation method:
+
+    <Tabs>
+      <Tab title="From Source">
+        ```bash
+        git clone https://github.com/quickjs-ng/quickjs.git
+        cd quickjs
+        make
+        ```
+      </Tab>
+      <Tab title="Pre-built Binaries">
+        Download the latest release from [GitHub Releases](https://github.com/quickjs-ng/quickjs/releases).
+      </Tab>
+      <Tab title="Using jsvu">
+        ```bash
+        npm install -g jsvu
+        jsvu --engines=quickjs
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Verify Installation">
+    Check that QuickJS is installed correctly:
+
+    ```bash
+    qjs --version
+    ```
+
+    You should see output like:
+    ```
+    QuickJS version 2024.01.13+ng
+    ```
+  </Step>
+</Steps>
+
+## Your First Script
+
+<Steps>
+  <Step title="Create a JavaScript file">
+    Create a file called `hello.js`:
+
+    ```javascript hello.js
+    console.log("Hello from QuickJS!");
+    
+    // QuickJS supports modern JavaScript
+    const greet = (name) => `Hello, ${name}!`;
+    console.log(greet("World"));
+    
+    // ES2023+ features
+    const numbers = [1, 2, 3, 4, 5];
+    const doubled = numbers.map(n => n * 2);
+    console.log(doubled);
+    ```
+  </Step>
+
+  <Step title="Run the script">
+    Execute your script with the `qjs` command:
+
+    ```bash
+    qjs hello.js
+    ```
+
+    **Output:**
+    ```
+    Hello from QuickJS!
+    Hello, World!
+    [ 2, 4, 6, 8, 10 ]
+    ```
+  </Step>
+</Steps>
+
+## Interactive REPL
+
+QuickJS includes an interactive Read-Eval-Print Loop (REPL) for experimenting with JavaScript:
+
+```bash
+qjs
+```
+
+Try some expressions in the REPL:
+
+```javascript
+> 2 + 2
+4
+> Math.sqrt(144)
+12
+> [1, 2, 3].map(x => x * x)
+[ 1, 4, 9 ]
+> const obj = { name: "QuickJS", version: 2024 }
+undefined
+> obj.name
+QuickJS
+> .exit  // Exit the REPL
+```
+
+<Tip>
+Press `Ctrl+D` or type `.exit` to exit the REPL.
+</Tip>
+
+## Using Modules
+
+QuickJS supports ES6 modules out of the box.
+
+<Steps>
+  <Step title="Create a module">
+    Create `math.js`:
+
+    ```javascript math.js
+    export function add(a, b) {
+        return a + b;
+    }
+
+    export function multiply(a, b) {
+        return a * b;
+    }
+
+    export const PI = 3.14159;
+    ```
+  </Step>
+
+  <Step title="Import and use the module">
+    Create `app.js`:
+
+    ```javascript app.js
+    import { add, multiply, PI } from './math.js';
+
+    console.log(add(5, 3));        // 8
+    console.log(multiply(4, 7));   // 28
+    console.log(PI);                // 3.14159
+    ```
+  </Step>
+
+  <Step title="Run as a module">
+    ```bash
+    qjs --module app.js
+    ```
+
+    **Output:**
+    ```
+    8
+    28
+    3.14159
+    ```
+  </Step>
+</Steps>
+
+<Note>
+QuickJS automatically detects modules when you use `import` or `export` syntax, so the `--module` flag is optional in most cases.
+</Note>
+
+## Embedding QuickJS in C
+
+QuickJS is designed to be embedded in C/C++ applications. Here's a minimal example:
+
+<Steps>
+  <Step title="Create a C file">
+    Create `embed.c`:
+
+    ```c embed.c
+    #include <quickjs.h>
+    #include <stdio.h>
+    #include <string.h>
+
+    int main(int argc, char **argv) {
+        JSRuntime *rt = JS_NewRuntime();
+        JSContext *ctx = JS_NewContext(rt);
+        
+        const char *code = "console.log('Hello from embedded QuickJS!'); 2 + 2";
+        JSValue result = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
+        
+        if (JS_IsException(result)) {
+            JSValue exception = JS_GetException(ctx);
+            const char *str = JS_ToCString(ctx, exception);
+            fprintf(stderr, "Error: %s\\n", str);
+            JS_FreeCString(ctx, str);
+            JS_FreeValue(ctx, exception);
+        } else {
+            int32_t val;
+            JS_ToInt32(ctx, &val, result);
+            printf("Result: %d\\n", val);
+        }
+        
+        JS_FreeValue(ctx, result);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+        
+        return 0;
+    }
+    ```
+  </Step>
+
+  <Step title="Compile and run">
+    ```bash
+    # Make sure you're in the QuickJS source directory
+    gcc embed.c -o embed -I. -L. -lquickjs -lm -lpthread
+    ./embed
+    ```
+
+    **Output:**
+    ```
+    Hello from embedded QuickJS!
+    Result: 4
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+For simpler embedding, use `qjs -c` to create standalone executables. See [Standalone Executables](/cli/standalone-executables).
+</Tip>
+
+## Using the Standard Library
+
+QuickJS includes optional standard library modules for file I/O and system operations:
+
+```javascript
+import * as std from 'qjs:std';
+import * as os from 'qjs:os';
+
+// File operations
+const content = std.loadFile('data.txt');
+console.log(content);
+
+// Current directory
+const [cwd, err] = os.getcwd();
+console.log('Current directory:', cwd);
+
+// Environment variables
+console.log('HOME:', std.getenv('HOME'));
+```
+
+Run with the `--std` flag to enable these modules:
+
+```bash
+qjs --std script.js
+```
+
+<Info>
+The standard library modules are not loaded by default to keep the engine lightweight. Use `--std` when you need file I/O or OS features.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/runtime-and-contexts">
+    Learn about runtimes, contexts, and memory management
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/runtime/creation">
+    Explore the complete C API documentation
+  </Card>
+  <Card title="CLI Tools" icon="terminal" href="/cli/qjs">
+    Master the qjs and qjsc command-line tools
+  </Card>
+  <Card title="Examples" icon="flask" href="/examples/hello-world">
+    See practical examples and tutorials
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<Accordion title="Command not found: qjs">
+  Make sure the QuickJS binaries are in your PATH:
+
+  ```bash
+  export PATH=$PATH:/path/to/quickjs
+  ```
+
+  Or install to a system directory:
+
+  ```bash
+  sudo make install
+  ```
+</Accordion>
+
+<Accordion title="Module not found errors">
+  When importing modules, use relative paths starting with `./` or `../`:
+
+  ```javascript
+  // Correct
+  import { foo } from './module.js';
+  
+  // Incorrect (won't work)
+  import { foo } from 'module.js';
+  ```
+</Accordion>
+
+<Accordion title="Compilation errors on macOS">
+  If you encounter build errors on macOS, ensure you have Command Line Tools installed:
+
+  ```bash
+  xcode-select --install
+  ```
+</Accordion>
