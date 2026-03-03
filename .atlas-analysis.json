@@ -1,0 +1,216 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "QuickJS-ng",
+  "projectDescription": "A small and embeddable JavaScript engine supporting the latest ECMAScript specification",
+  "theme": "aspen",
+  "primaryColor": "#F59E0B",
+  "lightColor": "#FCD34D",
+  "darkColor": "#D97706",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation",
+              "building"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/runtime-and-contexts",
+              "concepts/jsvalue-and-memory",
+              "concepts/error-handling",
+              "concepts/modules"
+            ]
+          },
+          {
+            "group": "CLI Tools",
+            "pages": [
+              "cli/qjs",
+              "cli/qjsc",
+              "cli/standalone-executables"
+            ]
+          },
+          {
+            "group": "Standard Library",
+            "pages": [
+              "stdlib/overview",
+              "stdlib/globals",
+              "stdlib/std-module",
+              "stdlib/os-module",
+              "stdlib/bjson-module"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/embedding",
+              "advanced/native-modules",
+              "advanced/memory-management",
+              "advanced/performance",
+              "advanced/workers"
+            ]
+          },
+          {
+            "group": "Platform Support",
+            "pages": [
+              "platforms/supported-platforms",
+              "platforms/build-options",
+              "platforms/cross-compilation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Runtime Management",
+            "pages": [
+              "api/runtime/creation",
+              "api/runtime/configuration",
+              "api/runtime/memory",
+              "api/runtime/garbage-collection"
+            ]
+          },
+          {
+            "group": "Context Management",
+            "pages": [
+              "api/context/creation",
+              "api/context/intrinsics",
+              "api/context/realms"
+            ]
+          },
+          {
+            "group": "Value Operations",
+            "pages": [
+              "api/values/creation",
+              "api/values/conversion",
+              "api/values/properties",
+              "api/values/reference-counting"
+            ]
+          },
+          {
+            "group": "Function Calls",
+            "pages": [
+              "api/functions/calling",
+              "api/functions/creating",
+              "api/functions/constructors"
+            ]
+          },
+          {
+            "group": "Object Operations",
+            "pages": [
+              "api/objects/creation",
+              "api/objects/properties",
+              "api/objects/arrays",
+              "api/objects/classes"
+            ]
+          },
+          {
+            "group": "Script Evaluation",
+            "pages": [
+              "api/evaluation/js-eval",
+              "api/evaluation/bytecode",
+              "api/evaluation/modules"
+            ]
+          },
+          {
+            "group": "Exception Handling",
+            "pages": [
+              "api/exceptions/throwing",
+              "api/exceptions/catching",
+              "api/exceptions/error-types"
+            ]
+          },
+          {
+            "group": "Atoms",
+            "pages": [
+              "api/atoms/overview",
+              "api/atoms/operations"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Resources",
+        "groups": [
+          {
+            "group": "Information",
+            "pages": [
+              "resources/ecmascript-features",
+              "resources/differences-from-original",
+              "resources/test262-compliance",
+              "resources/projects-using-quickjs"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/hello-world",
+              "examples/embedding-basic",
+              "examples/native-functions",
+              "examples/modules",
+              "examples/bytecode-compilation"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "contributing/development-guide",
+              "contributing/testing",
+              "contributing/internals"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "ECMAScript 2023+ compliance with ongoing spec support",
+    "Small footprint with embeddable C API",
+    "Module system with ES6 import/export",
+    "Runtime and context isolation with shared objects",
+    "Bytecode compilation and standalone executables",
+    "Cross-platform support (Linux, macOS, Windows, WASI)",
+    "Standard library with file I/O, networking, and workers",
+    "Memory limits and execution timeout control"
+  ],
+  "publicApiSurface": [
+    "JS_NewRuntime",
+    "JS_NewContext",
+    "JS_Eval",
+    "JS_NewCFunction",
+    "JS_GetPropertyStr",
+    "JS_SetPropertyStr",
+    "JS_Call",
+    "JS_NewObject",
+    "JS_NewArray",
+    "JS_NewString",
+    "JS_ToCString",
+    "JS_ToInt32",
+    "JS_GetException",
+    "JS_Throw",
+    "JS_FreeValue",
+    "JS_DupValue",
+    "JS_NewClass",
+    "JS_NewObjectClass",
+    "JS_SetOpaque",
+    "JS_GetOpaque",
+    "JS_NewAtom",
+    "JS_FreeAtom",
+    "JS_SetMemoryLimit",
+    "JS_SetMaxStackSize",
+    "JS_RunGC",
+    "js_std_eval_binary",
+    "js_init_module_std",
+    "js_init_module_os",
+    "js_init_module_bjson"
+  ]
+}
